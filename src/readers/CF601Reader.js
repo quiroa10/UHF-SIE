@@ -54,7 +54,7 @@ class CF601Reader {
       });
 
       this.connected = true;
-      this.addLog(`✅ CF601 conectado exitosamente en ${portPath}`, 'success');
+      this.addLog(`CF601 conectado exitosamente en ${portPath}`, 'success');
       
       return {
         success: true,
@@ -64,7 +64,7 @@ class CF601Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error conectando CF601: ${error.message}`, 'error');
+      this.addLog(`Error conectando CF601: ${error.message}`, 'error');
       this.connected = false;
       throw error;
     }
@@ -86,21 +86,21 @@ class CF601Reader {
         });
 
         this.connected = false;
-        this.addLog('✅ CF601 desconectado exitosamente', 'success');
+        this.addLog('CF601 desconectado exitosamente', 'success');
         
         return {
           success: true,
           message: 'CF601 desconectado'
         };
       } else {
-        this.addLog('⚠️ CF601 ya estaba desconectado', 'warning');
+        this.addLog('CF601 ya estaba desconectado', 'warning');
         return {
           success: true,
           message: 'CF601 ya estaba desconectado'
         };
       }
     } catch (error) {
-      this.addLog(`❌ Error desconectando CF601: ${error.message}`, 'error');
+      this.addLog(`Error desconectando CF601: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -109,16 +109,16 @@ class CF601Reader {
     if (!this.port || !this.parser) return;
 
     this.port.on('open', () => {
-      this.addLog('🔌 Puerto CF601 abierto', 'info');
+      this.addLog('Puerto CF601 abierto', 'info');
     });
 
     this.port.on('error', (err) => {
-      this.addLog(`❌ Error en puerto CF601: ${err.message}`, 'error');
+      this.addLog(`Error en puerto CF601: ${err.message}`, 'error');
       this.connected = false;
     });
 
     this.port.on('close', () => {
-      this.addLog('🔌 Puerto CF601 cerrado', 'info');
+      this.addLog('Puerto CF601 cerrado', 'info');
       this.connected = false;
       this.isReading = false;
     });
@@ -134,7 +134,7 @@ class CF601Reader {
       
       if (!data) return;
 
-      this.addLog(`📡 Datos recibidos CF601: ${data}`, 'info');
+      this.addLog(`Datos recibidos CF601: ${data}`, 'info');
 
       // Procesar datos según el protocolo EPC Gen2
       const processedData = {
@@ -155,10 +155,10 @@ class CF601Reader {
         this.readData = this.readData.slice(-100);
       }
 
-      this.addLog(`✅ Datos procesados: EPC=${processedData.epc}`, 'success');
+      this.addLog(`Datos procesados: EPC=${processedData.epc}`, 'success');
 
     } catch (error) {
-      this.addLog(`❌ Error procesando datos CF601: ${error.message}`, 'error');
+      this.addLog(`Error procesando datos CF601: ${error.message}`, 'error');
     }
   }
 
@@ -188,10 +188,24 @@ class CF601Reader {
       }
 
       this.isReading = true;
-      this.addLog('▶️ Iniciando lectura CF601...', 'info');
+      this.addLog('Iniciando lectura CF601...', 'info');
 
-      // Enviar comando de inventario si es necesario
-      // Por ahora solo escuchamos datos pasivos
+      // Enviar comandos de inventario al CF601
+      if (this.port && this.port.isOpen) {
+        // Comandos específicos para Chafon CF601
+        const inventoryCommand = this.buildInventoryCommand();
+        if (inventoryCommand) {
+          this.port.write(inventoryCommand);
+          this.addLog(`Comando enviado: ${inventoryCommand}`, 'info');
+        }
+        
+        // Comando para configurar potencia
+        const powerCommand = this.buildPowerCommand();
+        if (powerCommand) {
+          this.port.write(powerCommand);
+          this.addLog(`Comando de potencia enviado: ${powerCommand}`, 'info');
+        }
+      }
       
       return {
         success: true,
@@ -199,7 +213,7 @@ class CF601Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error iniciando lectura CF601: ${error.message}`, 'error');
+      this.addLog(`Error iniciando lectura CF601: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -207,7 +221,16 @@ class CF601Reader {
   async stopReading() {
     try {
       this.isReading = false;
-      this.addLog('⏹️ Deteniendo lectura CF601...', 'info');
+      this.addLog('Deteniendo lectura CF601...', 'info');
+      
+      // Enviar comando de parada al CF601
+      if (this.port && this.port.isOpen) {
+        const stopCommand = this.buildStopCommand();
+        if (stopCommand) {
+          this.port.write(stopCommand);
+          this.addLog(`Comando de parada enviado: ${stopCommand}`, 'info');
+        }
+      }
       
       return {
         success: true,
@@ -215,7 +238,7 @@ class CF601Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error deteniendo lectura CF601: ${error.message}`, 'error');
+      this.addLog(`Error deteniendo lectura CF601: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -240,6 +263,27 @@ class CF601Reader {
 
   getReadData() {
     return this.readData.slice(-20); // Últimos 20 registros
+  }
+
+  getDetailedLogs() {
+    return this.logs.slice(-50); // Últimos 50 logs detallados
+  }
+
+  buildInventoryCommand() {
+    // Comando de inventario para Chafon CF601
+    // Formato típico: 'INVENTORY\r\n' o comando específico del protocolo
+    return 'INVENTORY\r\n';
+  }
+
+  buildPowerCommand() {
+    // Comando para configurar potencia de transmisión
+    // Formato típico: 'POWER 20\r\n' (20 = nivel de potencia)
+    return 'POWER 20\r\n';
+  }
+
+  buildStopCommand() {
+    // Comando para detener inventario
+    return 'STOP\r\n';
   }
 
   addLog(message, type = 'info') {

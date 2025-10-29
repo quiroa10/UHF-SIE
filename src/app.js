@@ -217,6 +217,30 @@ app.get('/api/logs', (req, res) => {
   });
 });
 
+// Ruta para obtener logs detallados del servidor
+app.get('/api/server-logs', (req, res) => {
+  res.json({
+    success: true,
+    serverLogs: {
+      cf601: cf601Reader.getDetailedLogs(),
+      cf816: cf816Reader.getDetailedLogs(),
+      system: getSystemLogs()
+    }
+  });
+});
+
+// Función para obtener logs del sistema
+function getSystemLogs() {
+  return [
+    {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: 'Sistema funcionando',
+      source: 'system'
+    }
+  ];
+}
+
 // Ruta para obtener datos leídos
 app.get('/api/data', (req, res) => {
   res.json({

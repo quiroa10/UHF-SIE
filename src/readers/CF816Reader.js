@@ -9,12 +9,12 @@ class CF816Reader {
     this.readData = [];
     this.config = {
       host: null,
-      port: 4001,
+      port: null,
       timeout: 5000
     };
   }
 
-  async connect(host, port = 4001) {
+  async connect(host, port = 8080) {
     try {
       this.addLog(`Intentando conectar CF816 en ${host}:${port}...`, 'info');
       
@@ -36,12 +36,12 @@ class CF816Reader {
       await new Promise((resolve, reject) => {
         this.client.connect(port, host, () => {
           this.connected = true;
-          this.addLog(`✅ CF816 conectado exitosamente en ${host}:${port}`, 'success');
+          this.addLog(`CF816 conectado exitosamente en ${host}:${port}`, 'success');
           resolve();
         });
 
         this.client.on('error', (err) => {
-          this.addLog(`❌ Error conectando CF816: ${err.message}`, 'error');
+          this.addLog(`Error conectando CF816: ${err.message}`, 'error');
           this.connected = false;
           reject(err);
         });
@@ -55,7 +55,7 @@ class CF816Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error conectando CF816: ${error.message}`, 'error');
+      this.addLog(`Error conectando CF816: ${error.message}`, 'error');
       this.connected = false;
       throw error;
     }
@@ -68,21 +68,21 @@ class CF816Reader {
         this.client.destroy();
         this.client = null;
         this.connected = false;
-        this.addLog('✅ CF816 desconectado exitosamente', 'success');
+        this.addLog('CF816 desconectado exitosamente', 'success');
         
         return {
           success: true,
           message: 'CF816 desconectado'
         };
       } else {
-        this.addLog('⚠️ CF816 ya estaba desconectado', 'warning');
+        this.addLog('CF816 ya estaba desconectado', 'warning');
         return {
           success: true,
           message: 'CF816 ya estaba desconectado'
         };
       }
     } catch (error) {
-      this.addLog(`❌ Error desconectando CF816: ${error.message}`, 'error');
+      this.addLog(`Error desconectando CF816: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -95,18 +95,18 @@ class CF816Reader {
     });
 
     this.client.on('close', () => {
-      this.addLog('🔌 Conexión CF816 cerrada', 'info');
+      this.addLog('Conexión CF816 cerrada', 'info');
       this.connected = false;
       this.isReading = false;
     });
 
     this.client.on('error', (err) => {
-      this.addLog(`❌ Error en conexión CF816: ${err.message}`, 'error');
+      this.addLog(`Error en conexión CF816: ${err.message}`, 'error');
       this.connected = false;
     });
 
     this.client.on('timeout', () => {
-      this.addLog('⏰ Timeout en conexión CF816', 'warning');
+      this.addLog('Timeout en conexión CF816', 'warning');
     });
   }
 
@@ -116,7 +116,7 @@ class CF816Reader {
       
       if (!data) return;
 
-      this.addLog(`📡 Datos recibidos CF816: ${data}`, 'info');
+      this.addLog(`Datos recibidos CF816: ${data}`, 'info');
 
       // Procesar datos según el protocolo EPC Gen2
       const processedData = {
@@ -137,10 +137,10 @@ class CF816Reader {
         this.readData = this.readData.slice(-100);
       }
 
-      this.addLog(`✅ Datos procesados: EPC=${processedData.epc}, RSSI=${processedData.rssi}, Antena=${processedData.antenna}`, 'success');
+      this.addLog(`Datos procesados: EPC=${processedData.epc}, RSSI=${processedData.rssi}, Antena=${processedData.antenna}`, 'success');
 
     } catch (error) {
-      this.addLog(`❌ Error procesando datos CF816: ${error.message}`, 'error');
+      this.addLog(`Error procesando datos CF816: ${error.message}`, 'error');
     }
   }
 
@@ -203,14 +203,14 @@ class CF816Reader {
       }
 
       this.isReading = true;
-      this.addLog('▶️ Iniciando lectura CF816...', 'info');
+      this.addLog('Iniciando lectura CF816...', 'info');
 
       // Enviar comando de inventario
       // Comando básico para iniciar lectura (esto puede variar según el protocolo)
       const inventoryCommand = this.buildInventoryCommand();
       if (inventoryCommand) {
         this.client.write(inventoryCommand);
-        this.addLog(`📤 Comando enviado: ${inventoryCommand}`, 'info');
+        this.addLog(`Comando enviado: ${inventoryCommand}`, 'info');
       }
       
       return {
@@ -219,7 +219,7 @@ class CF816Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error iniciando lectura CF816: ${error.message}`, 'error');
+      this.addLog(`Error iniciando lectura CF816: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -227,13 +227,13 @@ class CF816Reader {
   async stopReading() {
     try {
       this.isReading = false;
-      this.addLog('⏹️ Deteniendo lectura CF816...', 'info');
+      this.addLog('Deteniendo lectura CF816...', 'info');
       
       // Enviar comando para detener lectura
       const stopCommand = this.buildStopCommand();
       if (stopCommand && this.client) {
         this.client.write(stopCommand);
-        this.addLog(`📤 Comando de parada enviado: ${stopCommand}`, 'info');
+        this.addLog(`Comando de parada enviado: ${stopCommand}`, 'info');
       }
       
       return {
@@ -242,7 +242,7 @@ class CF816Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error deteniendo lectura CF816: ${error.message}`, 'error');
+      this.addLog(`Error deteniendo lectura CF816: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -290,7 +290,7 @@ class CF816Reader {
       }
 
       this.client.write(command + '\r\n');
-      this.addLog(`📤 Comando enviado: ${command}`, 'info');
+      this.addLog(`Comando enviado: ${command}`, 'info');
       
       return {
         success: true,
@@ -298,7 +298,7 @@ class CF816Reader {
       };
 
     } catch (error) {
-      this.addLog(`❌ Error enviando comando CF816: ${error.message}`, 'error');
+      this.addLog(`Error enviando comando CF816: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -323,6 +323,10 @@ class CF816Reader {
 
   getReadData() {
     return this.readData.slice(-20); // Últimos 20 registros
+  }
+
+  getDetailedLogs() {
+    return this.logs.slice(-50); // Últimos 50 logs detallados
   }
 
   addLog(message, type = 'info') {

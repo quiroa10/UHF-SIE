@@ -4,6 +4,12 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const CF601Reader = require('./readers/CF601Reader');
 const CF816Reader = require('./readers/CF816Reader');
+let HID;
+try {
+  HID = require('node-hid');
+} catch (_) {
+  HID = null;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +37,19 @@ const cf816Reader = new CF816Reader();
 // Ruta principal para el dashboard
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/../index.html');
+});
+
+// HID: listar dispositivos
+app.get('/api/hid/list', (req, res) => {
+  if (!HID) {
+    return res.status(500).json({ success: false, message: 'node-hid no instalado' });
+  }
+  try {
+    const devices = HID.devices();
+    res.json({ success: true, devices });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 // Rutas de la API
@@ -61,6 +80,20 @@ app.post('/api/hardware/connect/cf601', async (req, res) => {
       success: false,
       message: `Error conectando CF601: ${error.message}`
     });
+  }
+});
+
+// Conectar CF601 vía USB-OPEN (HID)
+app.post('/api/hardware/connect/cf601-usbopen', async (req, res) => {
+  try {
+    const { path, vendorId, productId } = req.body || {};
+    if (!cf601Reader.connectUSBOpen) {
+      return res.status(500).json({ success: false, message: 'Función USB-OPEN no disponible en CF601Reader' });
+    }
+    const result = await cf601Reader.connectUSBOpen({ path, vendorId, productId });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: `Error conectando CF601 USB-OPEN: ${error.message}` });
   }
 });
 

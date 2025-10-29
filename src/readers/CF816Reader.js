@@ -2,16 +2,18 @@ const net = require('net');
 
 class CF816Reader {
   constructor() {
+    this.id = Math.random().toString(36).substr(2, 9);
     this.client = null;
     this.connected = false;
-    this.isReading = false;
     this.logs = [];
     this.readData = [];
+    this.isReading = false;
     this.config = {
       host: null,
       port: null,
       timeout: 5000
     };
+    this.hasStartedInventory = false;
   }
 
   async connect(host, port = 8080) {
@@ -95,14 +97,17 @@ class CF816Reader {
     });
 
     this.client.on('close', () => {
-      this.addLog('Conexión CF816 cerrada', 'info');
+      this.addLog('Conexión CF816 cerrada', 'warning');
       this.connected = false;
       this.isReading = false;
+      this.hasStartedInventory = false;
     });
 
     this.client.on('error', (err) => {
       this.addLog(`Error en conexión CF816: ${err.message}`, 'error');
       this.connected = false;
+      this.isReading = false;
+      this.hasStartedInventory = false;
     });
 
     this.client.on('timeout', () => {
@@ -198,6 +203,7 @@ class CF816Reader {
 
   async startReading() {
     try {
+      
       if (!this.connected) {
         throw new Error('CF816 no está conectado');
       }
@@ -215,10 +221,13 @@ class CF816Reader {
       this.addLog('Iniciando lectura CF816...', 'info');
 
       // Enviar comando de inventario SOLO UNA VEZ
-      const inventoryCommand = this.buildInventoryCommand();
-      if (inventoryCommand) {
-        this.client.write(inventoryCommand);
-        this.addLog(`Comando de inventario enviado: ${inventoryCommand}`, 'info');
+      if (!this.hasStartedInventory) {
+        const inventoryCommand = this.buildInventoryCommand();
+        if (inventoryCommand) {
+          this.client.write(inventoryCommand);
+          this.addLog(`Comando de inventario enviado: ${inventoryCommand}`, 'info');
+        }
+        this.hasStartedInventory = true;
       }
       
       return {
@@ -235,6 +244,7 @@ class CF816Reader {
   async stopReading() {
     try {
       this.isReading = false;
+      this.hasStartedInventory = false;
       this.addLog('Deteniendo lectura CF816...', 'info');
       
       // Enviar comando para detener lectura
@@ -334,7 +344,15 @@ class CF816Reader {
   }
 
   getDetailedLogs() {
-    return this.logs.slice(-50); // Últimos 50 logs detallados
+    // Filtrar logs de debug del constructor y otros logs problemáticos
+    return this.logs
+      .filter(log => !log.message.includes('DEBUG: ANTES de inicializar isReading = false en constructor'))
+      .filter(log => !log.message.includes('DEBUG: DESPUÉS de inicializar isReading = false en constructor'))
+      .filter(log => !log.message.includes('DEBUG: startReading() llamado'))
+      .filter(log => !log.message.includes('DEBUG: isReading establecido a TRUE'))
+      .filter(log => !log.message.includes('DEBUG: startReading() terminando'))
+      .filter(log => !log.message.includes('DEBUG: isReading reseteado'))
+      .slice(-50); // Últimos 50 logs detallados
   }
 
   addLog(message, type = 'info') {

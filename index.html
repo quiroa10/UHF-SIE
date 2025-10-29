@@ -439,22 +439,45 @@
             <h2 class="section-title">Configuración de Dispositivos</h2>
             
             <div class="device-card">
-                <h3 class="device-title">CF601 - Lector USB (Serial)</h3>
+                <h3 class="device-title">CF601 - Lector USB</h3>
                 <div class="form-row">
-                    <label class="form-label">Puerto:</label>
-                    <select id="cf601-port" class="form-select">
-                        <option value="">Cargando puertos...</option>
-                    </select>
-                    <label class="form-label">Velocidad:</label>
-                    <select id="cf601-baud" class="form-select">
-                        <option value="9600">9600</option>
-                        <option value="19200">19200</option>
-                        <option value="38400">38400</option>
-                        <option value="57600">57600</option>
-                        <option value="115200" selected>115200</option>
+                    <label class="form-label">Modo:</label>
+                    <select id="cf601-mode" class="form-select" onchange="toggleCF601Mode()">
+                        <option value="serial">Serial (COM)</option>
+                        <option value="hid" selected>USB-OPEN (HID)</option>
                     </select>
                 </div>
-                <button class="btn btn-primary" onclick="connectCF601()">Conectar CF601</button>
+                
+                <!-- Modo Serial -->
+                <div id="cf601-serial-config" style="display: none;">
+                    <div class="form-row">
+                        <label class="form-label">Puerto:</label>
+                        <select id="cf601-port" class="form-select">
+                            <option value="">Cargando puertos...</option>
+                        </select>
+                        <label class="form-label">Velocidad:</label>
+                        <select id="cf601-baud" class="form-select">
+                            <option value="9600">9600</option>
+                            <option value="19200">19200</option>
+                            <option value="38400">38400</option>
+                            <option value="57600">57600</option>
+                            <option value="115200" selected>115200</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="connectCF601Serial()">Conectar Serial</button>
+                </div>
+                
+                <!-- Modo HID -->
+                <div id="cf601-hid-config">
+                    <div class="form-row">
+                        <label class="form-label">Dispositivo HID:</label>
+                        <select id="cf601-hid-device" class="form-select">
+                            <option value="">Cargando dispositivos HID...</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="loadHIDDevices()">🔄 Refrescar</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="connectCF601HID()">Conectar USB-OPEN</button>
+                </div>
             </div>
 
             <div class="device-card">
@@ -480,6 +503,7 @@
                 <h3 class="section-title">Logs Detallados del Sistema</h3>
                 <div class="logs-controls">
                     <button class="btn btn-primary" onclick="clearDetailedLogs()">Limpiar Logs</button>
+                    <button class="btn" onclick="fetchServerLogs()">Refrescar Logs</button>
                     <button class="btn btn-success" onclick="exportLogs()">Exportar Logs</button>
                     <button class="btn btn-warning" onclick="toggleAutoScroll()">Auto-scroll: <span id="auto-scroll-status">ON</span></button>
                 </div>
@@ -520,6 +544,9 @@
         let autoScroll = true;
         let detailedLogs = [];
         let isPolling = false;
+            // Anti-duplicados y control incremental por dispositivo
+            const seenLogKeys = new Set(); // clave: `${timestamp}|${type}|${message}`
+            const lastLogTimestamp = { cf601: null, cf816: null, system: null };
 
         function addLog(message, type = 'info') {
             const logEntry = document.createElement('div');
@@ -529,17 +556,21 @@
             logsContainer.scrollTop = logsContainer.scrollHeight;
         }
 
-        function addDetailedLog(message, type = 'info', data = null) {
-            const timestamp = new Date().toISOString();
-            const timeStr = new Date().toLocaleTimeString();
+        function addDetailedLog(message, type = 'info', data = null, timestamp = null) {
+            const ts = timestamp || new Date().toISOString();
+            const timeStr = new Date(ts).toLocaleTimeString();
             
             const logEntry = {
-                timestamp: timestamp,
+                timestamp: ts,
                 time: timeStr,
                 message: message,
                 type: type,
                 data: data
             };
+            // Evitar duplicados exactos por clave
+            const key = `${logEntry.timestamp}|${logEntry.type}|${logEntry.message}`;
+            if (seenLogKeys.has(key)) return;
+            seenLogKeys.add(key);
             
             detailedLogs.push(logEntry);
             
@@ -615,7 +646,114 @@
             }
         }
 
-        async function connectCF601() {
+        // Funciones para CF601
+        function toggleCF601Mode() {
+            const mode = document.getElementById('cf601-mode').value;
+            const serialConfig = document.getElementById('cf601-serial-config');
+            const hidConfig = document.getElementById('cf601-hid-config');
+            
+            if (mode === 'serial') {
+                serialConfig.style.display = 'block';
+                hidConfig.style.display = 'none';
+            } else {
+                serialConfig.style.display = 'none';
+                hidConfig.style.display = 'block';
+                loadHIDDevices();
+            }
+        }
+
+        async function loadHIDDevices() {
+            addLog('Cargando dispositivos HID...', 'info');
+            addDetailedLog('Solicitando lista de dispositivos HID', 'http', {
+                url: `${API_BASE}/hid/list`,
+                method: 'GET'
+            });
+            
+            try {
+                const response = await fetch(`${API_BASE}/hid/list`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const select = document.getElementById('cf601-hid-device');
+                    select.innerHTML = '<option value="">Seleccionar dispositivo HID...</option>';
+                    
+                    result.devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.path;
+                        option.textContent = `${device.manufacturer || 'Unknown'} - ${device.product || 'Unknown'} (${device.path})`;
+                        option.dataset.vendorId = device.vendorId;
+                        option.dataset.productId = device.productId;
+                        select.appendChild(option);
+                    });
+                    
+                    addLog(`${result.devices.length} dispositivos HID encontrados`, 'success');
+                    addDetailedLog('Dispositivos HID cargados', 'success', result.devices);
+                } else {
+                    addLog(`Error cargando HID: ${result.message}`, 'error');
+                    addDetailedLog('Error cargando dispositivos HID', 'error', result);
+                }
+            } catch (error) {
+                addLog(`Error cargando HID: ${error.message}`, 'error');
+                addDetailedLog('Excepción cargando HID', 'error', {
+                    message: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+
+        async function connectCF601HID() {
+            const select = document.getElementById('cf601-hid-device');
+            const selectedOption = select.options[select.selectedIndex];
+            
+            if (!selectedOption.value) {
+                addLog('Selecciona un dispositivo HID', 'warning');
+                return;
+            }
+            
+            addLog(`Conectando CF601 por USB-OPEN...`, 'info');
+            addDetailedLog('Iniciando conexión CF601 USB-OPEN', 'info', {
+                path: selectedOption.value,
+                vendorId: selectedOption.dataset.vendorId,
+                productId: selectedOption.dataset.productId
+            });
+            
+            try {
+                const response = await fetch(`${API_BASE}/hardware/connect/cf601-usbopen`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: selectedOption.value,
+                        vendorId: parseInt(selectedOption.dataset.vendorId),
+                        productId: parseInt(selectedOption.dataset.productId)
+                    })
+                });
+                
+                const result = await response.json();
+                addDetailedLog('Respuesta conexión CF601 USB-OPEN', 'http', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: result
+                });
+                
+                if (result.success) {
+                    addLog(`${result.message}`, 'success');
+                    addDetailedLog('Conexión CF601 USB-OPEN exitosa', 'success', result);
+                    updateDeviceStatus('cf601', true);
+                    updateSystemStatus(true);
+                } else {
+                    addLog(`Error: ${result.message}`, 'error');
+                    addDetailedLog('Error en conexión CF601 USB-OPEN', 'error', result);
+                }
+            } catch (error) {
+                addLog(`Error conectando CF601 USB-OPEN: ${error.message}`, 'error');
+                addDetailedLog('Excepción en conexión CF601 USB-OPEN', 'error', {
+                    message: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+
+        async function connectCF601Serial() {
             const port = document.getElementById('cf601-port').value;
             const baudRate = parseInt(document.getElementById('cf601-baud').value);
             
@@ -934,39 +1072,39 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    // Procesar logs del CF601 (solo logs nuevos)
+                    // Procesar logs del CF601 (solo logs nuevos comparando timestamp)
                     if (result.serverLogs.cf601) {
-                        result.serverLogs.cf601.forEach(log => {
-                            // Solo agregar logs que no estén ya en la lista
-                            if (!detailedLogs.find(existingLog => 
-                                existingLog.timestamp === log.timestamp && 
-                                existingLog.message === log.message
-                            )) {
+                        const last = lastLogTimestamp.cf601;
+                        let maxTs = last;
+                        result.serverLogs.cf601
+                            .filter(log => !last || (log.timestamp && log.timestamp > last))
+                            .forEach(log => {
                                 // Filtrar logs de conexión repetitivos
                                 if (!log.message.includes('Intentando conectar') && 
                                     !log.message.includes('Puerto CF601 abierto') &&
                                     !log.message.includes('CF601 conectado exitosamente')) {
-                                    addDetailedLog(log.message, log.type, log.data);
+                                    addDetailedLog(log.message, log.type, log.data, log.timestamp);
+                                    if (!maxTs || (log.timestamp && log.timestamp > maxTs)) maxTs = log.timestamp;
                                 }
-                            }
-                        });
+                            });
+                        if (maxTs) lastLogTimestamp.cf601 = maxTs;
                     }
                     
-                    // Procesar logs del CF816 (solo logs nuevos)
+                    // Procesar logs del CF816 (solo logs nuevos comparando timestamp)
                     if (result.serverLogs.cf816) {
-                        result.serverLogs.cf816.forEach(log => {
-                            // Solo agregar logs que no estén ya en la lista
-                            if (!detailedLogs.find(existingLog => 
-                                existingLog.timestamp === log.timestamp && 
-                                existingLog.message === log.message
-                            )) {
+                        const last = lastLogTimestamp.cf816;
+                        let maxTs = last;
+                        result.serverLogs.cf816
+                            .filter(log => !last || (log.timestamp && log.timestamp > last))
+                            .forEach(log => {
                                 // Filtrar logs de conexión repetitivos
                                 if (!log.message.includes('Intentando conectar') && 
                                     !log.message.includes('CF816 conectado exitosamente')) {
-                                    addDetailedLog(log.message, log.type, log.data);
+                                    addDetailedLog(log.message, log.type, log.data, log.timestamp);
+                                    if (!maxTs || (log.timestamp && log.timestamp > maxTs)) maxTs = log.timestamp;
                                 }
-                            }
-                        });
+                            });
+                        if (maxTs) lastLogTimestamp.cf816 = maxTs;
                     }
                 }
             } catch (error) {
@@ -985,12 +1123,12 @@
             });
             
             loadPorts();
+            loadHIDDevices(); // Cargar dispositivos HID al inicio
             checkStatus();
             addLog('RFID Control Center iniciado', 'success');
             addDetailedLog('Aplicación iniciada correctamente', 'success');
             
-            // Iniciar polling de logs del servidor cada 5 segundos
-            setInterval(fetchServerLogs, 5000);
+            // Polling automático deshabilitado. Usa el botón "Refrescar logs".
         };
     </script>
 </body>

@@ -1,27 +1,48 @@
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
+let HID;
+try {
+  HID = require('node-hid');
+} catch (_) {
+  HID = null;
+}
 
 class CF601Reader {
   constructor() {
+    this.id = Math.random().toString(36).substr(2, 9);
     this.port = null;
     this.parser = null;
-    this.isReading = false;
     this.connected = false;
     this.logs = [];
     this.readData = [];
+    this.isReading = false;
     this.config = {
       baudRate: 9600,
       dataBits: 8,
       stopBits: 1,
       parity: 'none'
     };
+    this.hasStartedInventory = false;
+    this.connectionMode = 'serial'; // 'serial' | 'hid'
+    this.hidDevice = null;
   }
 
   async connect(portPath, baudRate = 9600) {
     try {
       this.addLog(`Intentando conectar CF601 en ${portPath} (${baudRate} baud)...`, 'info');
       
-      // Cerrar conexión existente si existe
+      // Si ya está conectado al mismo puerto y misma velocidad, no reconectar
+      if (this.port && this.port.isOpen && this.port.path === portPath && this.config.baudRate === baudRate) {
+        this.addLog(`CF601 ya conectado en ${portPath} (${baudRate}) - se omite reconexión`, 'warning');
+        return {
+          success: true,
+          message: `CF601 ya conectado en ${portPath}`,
+          port: portPath,
+          baudRate
+        };
+      }
+
+      // Cerrar conexión existente solo si hay una conexión previa diferente
       if (this.port && this.port.isOpen) {
         await this.disconnect();
       }
@@ -72,8 +93,15 @@ class CF601Reader {
 
   async disconnect() {
     try {
-      if (this.port && this.port.isOpen) {
+      if (this.connectionMode === 'hid' && this.hidDevice) {
         this.isReading = false;
+        try { this.hidDevice.close(); } catch (_) {}
+        this.hidDevice = null;
+        this.connected = false;
+        return { success: true, message: 'CF601 (USB-OPEN) desconectado' };
+      }
+      if (this.port && this.port.isOpen) {
+      this.isReading = false;
         
         await new Promise((resolve, reject) => {
           this.port.close((err) => {
@@ -105,6 +133,55 @@ class CF601Reader {
     }
   }
 
+  listHIDDevices() {
+    if (!HID) return [];
+    return HID.devices();
+  }
+
+  async connectUSBOpen({ path, vendorId, productId } = {}) {
+    if (!HID) throw new Error('node-hid no está disponible');
+    try {
+      if (this.hidDevice && this.connected) {
+        return { success: true, message: 'CF601 (USB-OPEN) ya conectado' };
+      }
+      const devices = HID.devices();
+      let deviceInfo = null;
+      if (path) deviceInfo = devices.find(d => d.path === path);
+      if (!deviceInfo && vendorId && productId) {
+        deviceInfo = devices.find(d => d.vendorId === vendorId && d.productId === productId);
+      }
+      if (!deviceInfo) {
+        deviceInfo = devices.find(d => (d.manufacturer || '').toLowerCase().includes('chafon') || (d.product || '').toLowerCase().includes('rfid')) || devices[0];
+      }
+      if (!deviceInfo) throw new Error('No se encontró dispositivo HID');
+
+      this.hidDevice = new HID.HID(deviceInfo.path);
+      this.connectionMode = 'hid';
+      this.connected = true;
+
+      this.hidDevice.on('data', (data) => {
+        const hex = data.toString('hex');
+        this.addLog(`HID DATA (hex): ${hex}`, 'info');
+        const ascii = data.toString('ascii').replace(/[^\x20-\x7E]+/g, '').trim();
+        if (ascii) {
+          this.processData(ascii);
+        }
+      });
+      this.hidDevice.on('error', (err) => {
+        this.addLog(`Error HID CF601: ${err.message}`, 'error');
+        this.isReading = false;
+        this.connected = false;
+        try { this.hidDevice.close(); } catch (_) {}
+        this.hidDevice = null;
+      });
+
+      return { success: true, message: 'CF601 conectado por USB-OPEN', device: deviceInfo };
+    } catch (error) {
+      this.connected = false;
+      throw error;
+    }
+  }
+
   setupEventHandlers() {
     if (!this.port || !this.parser) return;
 
@@ -115,12 +192,15 @@ class CF601Reader {
     this.port.on('error', (err) => {
       this.addLog(`Error en puerto CF601: ${err.message}`, 'error');
       this.connected = false;
+      this.isReading = false;
+      this.hasStartedInventory = false;
     });
 
     this.port.on('close', () => {
-      this.addLog('Puerto CF601 cerrado', 'info');
+      this.addLog('Puerto CF601 cerrado', 'warning');
       this.connected = false;
       this.isReading = false;
+      this.hasStartedInventory = false;
     });
 
     this.parser.on('data', (data) => {
@@ -183,6 +263,7 @@ class CF601Reader {
 
   async startReading() {
     try {
+      
       if (!this.connected) {
         throw new Error('CF601 no está conectado');
       }
@@ -200,7 +281,14 @@ class CF601Reader {
       this.addLog('Iniciando lectura CF601...', 'info');
 
       // Enviar comandos de inventario al CF601 SOLO UNA VEZ
-      if (this.port && this.port.isOpen) {
+      if (this.connectionMode === 'hid' && this.hidDevice && !this.hasStartedInventory) {
+        const powerCommand = this.buildPowerCommand();
+        const inventoryCommand = this.buildInventoryCommand();
+        this._hidWrite(powerCommand);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        this._hidWrite(inventoryCommand);
+        this.hasStartedInventory = true;
+      } else if (this.port && this.port.isOpen && !this.hasStartedInventory) {
         // Comando para configurar potencia PRIMERO
         const powerCommand = this.buildPowerCommand();
         if (powerCommand) {
@@ -217,6 +305,7 @@ class CF601Reader {
           this.port.write(inventoryCommand);
           this.addLog(`Comando de inventario enviado: ${inventoryCommand}`, 'info');
         }
+        this.hasStartedInventory = true;
       }
       
       return {
@@ -233,6 +322,7 @@ class CF601Reader {
   async stopReading() {
     try {
       this.isReading = false;
+      this.hasStartedInventory = false;
       this.addLog('Deteniendo lectura CF601...', 'info');
       
       // Enviar comando de parada al CF601
@@ -278,7 +368,15 @@ class CF601Reader {
   }
 
   getDetailedLogs() {
-    return this.logs.slice(-50); // Últimos 50 logs detallados
+    // Filtrar logs de debug del constructor y otros logs problemáticos
+    return this.logs
+      .filter(log => !log.message.includes('DEBUG: ANTES de inicializar isReading = false en constructor'))
+      .filter(log => !log.message.includes('DEBUG: DESPUÉS de inicializar isReading = false en constructor'))
+      .filter(log => !log.message.includes('DEBUG: startReading() llamado'))
+      .filter(log => !log.message.includes('DEBUG: isReading establecido a TRUE'))
+      .filter(log => !log.message.includes('DEBUG: startReading() terminando'))
+      .filter(log => !log.message.includes('DEBUG: isReading reseteado'))
+      .slice(-50); // Últimos 50 logs detallados
   }
 
   buildInventoryCommand() {
@@ -314,6 +412,19 @@ class CF601Reader {
     }
     
     console.log(`[CF601] ${message}`);
+  }
+
+  _hidWrite(commandStr) {
+    if (!this.hidDevice) return;
+    const bytes = Buffer.from(commandStr, 'ascii');
+    // node-hid requiere primer byte como reportId (0x00 si no se usa)
+    const report = Buffer.concat([Buffer.from([0x00]), bytes]);
+    try {
+      this.hidDevice.write(Array.from(report));
+      this.addLog(`HID WRITE: ${bytes.toString('hex')}`, 'info');
+    } catch (err) {
+      this.addLog(`Error enviando HID: ${err.message}`, 'error');
+    }
   }
 }
 

@@ -423,7 +423,7 @@
     <div class="dashboard">
         <div class="header">
             <div class="header-left">
-                <div class="logo">📡</div>
+                <div class="logo">RFID</div>
                 <div>
                     <h1>RFID Control Center</h1>
                     <p class="header-subtitle">Sistema de control para lectores Chafon CF601 y CF816</p>
@@ -436,10 +436,10 @@
         </div>
 
         <div class="main-content">
-            <h2 class="section-title">🔌 Configuración de Dispositivos</h2>
+            <h2 class="section-title">Configuración de Dispositivos</h2>
             
             <div class="device-card">
-                <h3 class="device-title">📡 CF601 - Lector USB (Serial)</h3>
+                <h3 class="device-title">CF601 - Lector USB (Serial)</h3>
                 <div class="form-row">
                     <label class="form-label">Puerto:</label>
                     <select id="cf601-port" class="form-select">
@@ -454,37 +454,37 @@
                         <option value="115200" selected>115200</option>
                     </select>
                 </div>
-                <button class="btn btn-primary" onclick="connectCF601()">🔌 Conectar CF601</button>
+                <button class="btn btn-primary" onclick="connectCF601()">Conectar CF601</button>
             </div>
 
             <div class="device-card">
-                <h3 class="device-title">🌐 CF816 - Lector Ethernet (TCP/IP)</h3>
+                <h3 class="device-title">CF816 - Lector Ethernet (TCP/IP)</h3>
                 <div class="form-row">
                     <label class="form-label">IP:</label>
                     <input type="text" id="cf816-ip" value="192.168.1.100" class="form-input">
                     <label class="form-label">Puerto:</label>
                     <input type="number" id="cf816-port" value="8080" class="form-input">
                 </div>
-                <button class="btn btn-primary" onclick="connectCF816()">🔌 Conectar CF816</button>
+                <button class="btn btn-primary" onclick="connectCF816()">Conectar CF816</button>
             </div>
 
             <div class="controls-grid">
-                <button class="btn btn-danger" onclick="disconnectAll()">🔌 Desconectar Todos</button>
-                <button class="btn btn-success" onclick="checkStatus()">🔄 Verificar Estado</button>
-                <button class="btn btn-warning" onclick="startReading()">▶️ Iniciar Lectura</button>
-                <button class="btn btn-warning" onclick="stopReading()">⏹️ Detener Lectura</button>
+                <button class="btn btn-danger" onclick="disconnectAll()">Desconectar Todos</button>
+                <button class="btn btn-success" onclick="checkStatus()">Verificar Estado</button>
+                <button class="btn btn-warning" onclick="startReading()">Iniciar Lectura</button>
+                <button class="btn btn-warning" onclick="stopReading()">Detener Lectura</button>
             </div>
 
             <!-- Sección de Logs Detallados -->
             <div class="detailed-logs-section">
-                <h3 class="section-title">📋 Logs Detallados del Sistema</h3>
+                <h3 class="section-title">Logs Detallados del Sistema</h3>
                 <div class="logs-controls">
-                    <button class="btn btn-primary" onclick="clearDetailedLogs()">🗑️ Limpiar Logs</button>
-                    <button class="btn btn-success" onclick="exportLogs()">📥 Exportar Logs</button>
-                    <button class="btn btn-warning" onclick="toggleAutoScroll()">📜 Auto-scroll: <span id="auto-scroll-status">ON</span></button>
+                    <button class="btn btn-primary" onclick="clearDetailedLogs()">Limpiar Logs</button>
+                    <button class="btn btn-success" onclick="exportLogs()">Exportar Logs</button>
+                    <button class="btn btn-warning" onclick="toggleAutoScroll()">Auto-scroll: <span id="auto-scroll-status">ON</span></button>
                 </div>
                 <div class="detailed-logs-container">
-                    <div class="detailed-logs-title">🔍 Logs del Sistema</div>
+                    <div class="detailed-logs-title">Logs del Sistema</div>
                     <div id="detailed-logs">
                         <div class="detailed-log-entry log-info">[Sistema] Iniciando logging detallado...</div>
                     </div>
@@ -519,6 +519,7 @@
         const detailedLogsContainer = document.getElementById('detailed-logs');
         let autoScroll = true;
         let detailedLogs = [];
+        let isPolling = false;
 
         function addLog(message, type = 'info') {
             const logEntry = document.createElement('div');
@@ -644,16 +645,16 @@
                 addDetailedLog('Datos de respuesta parseados', 'debug', result);
                 
                 if (result.success) {
-                    addLog(`✅ ${result.message}`, 'success');
+                    addLog(`${result.message}`, 'success');
                     addDetailedLog('Conexión CF601 exitosa', 'success', result);
                     updateDeviceStatus('cf601', true);
                     updateSystemStatus(true);
                 } else {
-                    addLog(`❌ Error: ${result.message}`, 'error');
+                    addLog(`Error: ${result.message}`, 'error');
                     addDetailedLog('Error en conexión CF601', 'error', result);
                 }
             } catch (error) {
-                addLog(`❌ Error conectando CF601: ${error.message}`, 'error');
+                addLog(`Error conectando CF601: ${error.message}`, 'error');
                 addDetailedLog('Excepción en conexión CF601', 'error', {
                     message: error.message,
                     stack: error.stack,
@@ -667,59 +668,120 @@
             const port = parseInt(document.getElementById('cf816-port').value);
             
             addLog(`Conectando CF816 en ${ip}:${port}...`, 'info');
+            addDetailedLog('Iniciando conexión CF816', 'info', { ip, port });
             
             try {
+                addDetailedLog('Enviando petición HTTP a API', 'http', {
+                    url: `${API_BASE}/hardware/connect/cf816`,
+                    method: 'POST',
+                    body: { ip, port }
+                });
+                
                 const response = await fetch(`${API_BASE}/hardware/connect/cf816`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ip, port })
                 });
                 
+                addDetailedLog('Respuesta HTTP recibida', 'http', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+                
                 const result = await response.json();
+                addDetailedLog('Datos de respuesta parseados', 'debug', result);
                 
                 if (result.success) {
-                    addLog(`✅ ${result.message}`, 'success');
+                    addLog(`${result.message}`, 'success');
+                    addDetailedLog('Conexión CF816 exitosa', 'success', result);
                     updateDeviceStatus('cf816', true);
                     updateSystemStatus(true);
                 } else {
-                    addLog(`❌ Error: ${result.message}`, 'error');
+                    addLog(`Error: ${result.message}`, 'error');
+                    addDetailedLog('Error en conexión CF816', 'error', result);
                 }
             } catch (error) {
-                addLog(`❌ Error conectando CF816: ${error.message}`, 'error');
+                addLog(`Error conectando CF816: ${error.message}`, 'error');
+                addDetailedLog('Excepción en conexión CF816', 'error', {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name
+                });
             }
         }
 
         async function startReading() {
             addLog('Iniciando lectura en todos los dispositivos...', 'info');
+            addDetailedLog('Iniciando lectura en todos los dispositivos', 'info');
             
             try {
+                addDetailedLog('Enviando petición HTTP para iniciar lectura', 'http', {
+                    url: `${API_BASE}/hardware/start-all`,
+                    method: 'POST'
+                });
+                
                 const response = await fetch(`${API_BASE}/hardware/start-all`, { method: 'POST' });
+                addDetailedLog('Respuesta HTTP recibida para iniciar lectura', 'http', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+                
                 const result = await response.json();
+                addDetailedLog('Datos de respuesta parseados para iniciar lectura', 'debug', result);
                 
                 if (result.success) {
-                    addLog(`✅ ${result.message}`, 'success');
+                    addLog(`${result.message}`, 'success');
+                    addDetailedLog('Lectura iniciada exitosamente', 'success', result);
                 } else {
-                    addLog(`❌ Error: ${result.message}`, 'error');
+                    addLog(`Error: ${result.message}`, 'error');
+                    addDetailedLog('Error iniciando lectura', 'error', result);
                 }
             } catch (error) {
-                addLog(`❌ Error iniciando lectura: ${error.message}`, 'error');
+                addLog(`Error iniciando lectura: ${error.message}`, 'error');
+                addDetailedLog('Excepción iniciando lectura', 'error', {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name
+                });
             }
         }
 
         async function stopReading() {
             addLog('Deteniendo lectura en todos los dispositivos...', 'info');
+            addDetailedLog('Deteniendo lectura en todos los dispositivos', 'info');
             
             try {
+                addDetailedLog('Enviando petición HTTP para detener lectura', 'http', {
+                    url: `${API_BASE}/hardware/stop-all`,
+                    method: 'POST'
+                });
+                
                 const response = await fetch(`${API_BASE}/hardware/stop-all`, { method: 'POST' });
+                addDetailedLog('Respuesta HTTP recibida para detener lectura', 'http', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+                
                 const result = await response.json();
+                addDetailedLog('Datos de respuesta parseados para detener lectura', 'debug', result);
                 
                 if (result.success) {
-                    addLog(`✅ ${result.message}`, 'success');
+                    addLog(`${result.message}`, 'success');
+                    addDetailedLog('Lectura detenida exitosamente', 'success', result);
                 } else {
-                    addLog(`❌ Error: ${result.message}`, 'error');
+                    addLog(`Error: ${result.message}`, 'error');
+                    addDetailedLog('Error deteniendo lectura', 'error', result);
                 }
             } catch (error) {
-                addLog(`❌ Error deteniendo lectura: ${error.message}`, 'error');
+                addLog(`Error deteniendo lectura: ${error.message}`, 'error');
+                addDetailedLog('Excepción deteniendo lectura', 'error', {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name
+                });
             }
         }
 
@@ -731,15 +793,15 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog(`✅ ${result.message}`, 'success');
+                    addLog(`${result.message}`, 'success');
                     updateDeviceStatus('cf601', false);
                     updateDeviceStatus('cf816', false);
                     updateSystemStatus(false);
                 } else {
-                    addLog(`❌ Error: ${result.message}`, 'error');
+                    addLog(`Error: ${result.message}`, 'error');
                 }
             } catch (error) {
-                addLog(`❌ Error desconectando dispositivos: ${error.message}`, 'error');
+                addLog(`Error desconectando dispositivos: ${error.message}`, 'error');
             }
         }
 
@@ -778,7 +840,7 @@
                 addDetailedLog('Datos de estado parseados', 'debug', result);
                 
                 if (result.success) {
-                    addLog(`✅ Sistema funcionando correctamente`, 'success');
+                    addLog(`Sistema funcionando correctamente`, 'success');
                     addDetailedLog('Estado del sistema verificado exitosamente', 'success', result);
                     
                     const cf601Connected = result.data.cf601 && result.data.cf601.isConnected;
@@ -796,11 +858,11 @@
                     addLog(`CF601: ${cf601Connected ? 'Conectado' : 'Desconectado'}`, cf601Connected ? 'success' : 'info');
                     addLog(`CF816: ${cf816Connected ? 'Conectado' : 'Desconectado'}`, cf816Connected ? 'success' : 'info');
                 } else {
-                    addLog(`❌ Error verificando estado`, 'error');
+                    addLog(`Error verificando estado`, 'error');
                     addDetailedLog('Error en respuesta de estado', 'error', result);
                 }
             } catch (error) {
-                addLog(`❌ Error verificando estado: ${error.message}`, 'error');
+                addLog(`Error verificando estado: ${error.message}`, 'error');
                 addDetailedLog('Excepción verificando estado', 'error', {
                     message: error.message,
                     stack: error.stack,
@@ -845,7 +907,7 @@
                         portSelect.appendChild(option);
                     });
                     
-                    addLog(`✅ Puertos detectados: ${result.ports.join(', ')}`, 'success');
+                    addLog(`Puertos detectados: ${result.ports.join(', ')}`, 'success');
                     addDetailedLog('Puertos cargados en interfaz', 'success', {
                         selectedPort: 'COM4',
                         availablePorts: result.ports
@@ -854,11 +916,63 @@
                     addDetailedLog('Error en respuesta de puertos', 'error', result);
                 }
             } catch (error) {
-                addLog(`⚠️ No se pudieron detectar puertos automáticamente`, 'warning');
+                addLog(`No se pudieron detectar puertos automáticamente`, 'warning');
                 addDetailedLog('Error detectando puertos', 'error', {
                     message: error.message,
                     stack: error.stack
                 });
+            }
+        }
+
+        // Función para obtener logs del servidor
+        async function fetchServerLogs() {
+            if (isPolling) return; // Evitar múltiples llamadas simultáneas
+            
+            isPolling = true;
+            try {
+                const response = await fetch(`${API_BASE}/server-logs`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Procesar logs del CF601 (solo logs nuevos)
+                    if (result.serverLogs.cf601) {
+                        result.serverLogs.cf601.forEach(log => {
+                            // Solo agregar logs que no estén ya en la lista
+                            if (!detailedLogs.find(existingLog => 
+                                existingLog.timestamp === log.timestamp && 
+                                existingLog.message === log.message
+                            )) {
+                                // Filtrar logs de conexión repetitivos
+                                if (!log.message.includes('Intentando conectar') && 
+                                    !log.message.includes('Puerto CF601 abierto') &&
+                                    !log.message.includes('CF601 conectado exitosamente')) {
+                                    addDetailedLog(log.message, log.type, log.data);
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Procesar logs del CF816 (solo logs nuevos)
+                    if (result.serverLogs.cf816) {
+                        result.serverLogs.cf816.forEach(log => {
+                            // Solo agregar logs que no estén ya en la lista
+                            if (!detailedLogs.find(existingLog => 
+                                existingLog.timestamp === log.timestamp && 
+                                existingLog.message === log.message
+                            )) {
+                                // Filtrar logs de conexión repetitivos
+                                if (!log.message.includes('Intentando conectar') && 
+                                    !log.message.includes('CF816 conectado exitosamente')) {
+                                    addDetailedLog(log.message, log.type, log.data);
+                                }
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                // Silenciar errores de polling
+            } finally {
+                isPolling = false;
             }
         }
 
@@ -872,8 +986,11 @@
             
             loadPorts();
             checkStatus();
-            addLog('🚀 RFID Control Center iniciado', 'success');
+            addLog('RFID Control Center iniciado', 'success');
             addDetailedLog('Aplicación iniciada correctamente', 'success');
+            
+            // Iniciar polling de logs del servidor cada 5 segundos
+            setInterval(fetchServerLogs, 5000);
         };
     </script>
 </body>

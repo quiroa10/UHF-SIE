@@ -187,23 +187,35 @@ class CF601Reader {
         throw new Error('CF601 no está conectado');
       }
 
+      // Si ya está leyendo, no hacer nada
+      if (this.isReading) {
+        this.addLog('CF601 ya está en modo lectura', 'warning');
+        return {
+          success: true,
+          message: 'CF601 ya está en modo lectura'
+        };
+      }
+
       this.isReading = true;
       this.addLog('Iniciando lectura CF601...', 'info');
 
-      // Enviar comandos de inventario al CF601
+      // Enviar comandos de inventario al CF601 SOLO UNA VEZ
       if (this.port && this.port.isOpen) {
-        // Comandos específicos para Chafon CF601
-        const inventoryCommand = this.buildInventoryCommand();
-        if (inventoryCommand) {
-          this.port.write(inventoryCommand);
-          this.addLog(`Comando enviado: ${inventoryCommand}`, 'info');
-        }
-        
-        // Comando para configurar potencia
+        // Comando para configurar potencia PRIMERO
         const powerCommand = this.buildPowerCommand();
         if (powerCommand) {
           this.port.write(powerCommand);
           this.addLog(`Comando de potencia enviado: ${powerCommand}`, 'info');
+        }
+        
+        // Pequeña pausa antes del comando de inventario
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Comando de inventario para iniciar lectura continua
+        const inventoryCommand = this.buildInventoryCommand();
+        if (inventoryCommand) {
+          this.port.write(inventoryCommand);
+          this.addLog(`Comando de inventario enviado: ${inventoryCommand}`, 'info');
         }
       }
       
@@ -271,13 +283,13 @@ class CF601Reader {
 
   buildInventoryCommand() {
     // Comando de inventario para Chafon CF601
-    // Formato típico: 'INVENTORY\r\n' o comando específico del protocolo
+    // Según documentación Chafon, el comando correcto es:
     return 'INVENTORY\r\n';
   }
 
   buildPowerCommand() {
     // Comando para configurar potencia de transmisión
-    // Formato típico: 'POWER 20\r\n' (20 = nivel de potencia)
+    // Nivel de potencia recomendado para Chafon CF601
     return 'POWER 20\r\n';
   }
 

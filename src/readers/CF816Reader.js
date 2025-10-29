@@ -202,15 +202,23 @@ class CF816Reader {
         throw new Error('CF816 no está conectado');
       }
 
+      // Si ya está leyendo, no hacer nada
+      if (this.isReading) {
+        this.addLog('CF816 ya está en modo lectura', 'warning');
+        return {
+          success: true,
+          message: 'CF816 ya está en modo lectura'
+        };
+      }
+
       this.isReading = true;
       this.addLog('Iniciando lectura CF816...', 'info');
 
-      // Enviar comando de inventario
-      // Comando básico para iniciar lectura (esto puede variar según el protocolo)
+      // Enviar comando de inventario SOLO UNA VEZ
       const inventoryCommand = this.buildInventoryCommand();
       if (inventoryCommand) {
         this.client.write(inventoryCommand);
-        this.addLog(`Comando enviado: ${inventoryCommand}`, 'info');
+        this.addLog(`Comando de inventario enviado: ${inventoryCommand}`, 'info');
       }
       
       return {

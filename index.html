@@ -443,8 +443,7 @@
                 <div class="form-row">
                     <label class="form-label">Modo:</label>
                     <select id="cf601-mode" class="form-select" onchange="toggleCF601Mode()">
-                        <option value="serial">Serial (COM)</option>
-                        <option value="hid" selected>USB-OPEN (HID)</option>
+                        <option value="hid" selected>USB-OPEN</option>
                     </select>
                 </div>
                 
@@ -470,13 +469,19 @@
                 <!-- Modo HID -->
                 <div id="cf601-hid-config">
                     <div class="form-row">
-                        <label class="form-label">Dispositivo HID:</label>
-                        <select id="cf601-hid-device" class="form-select">
-                            <option value="">Cargando dispositivos HID...</option>
-                        </select>
-                        <button class="btn btn-secondary" onclick="loadHIDDevices()">🔄 Refrescar</button>
+                        <span class="form-label">USB-OPEN:</span>
+                        <span style="font-size:0.85rem;color:#4a5568;">Requiere microservicio en 127.0.0.1:5005</span>
                     </div>
                     <button class="btn btn-primary" onclick="connectCF601HID()">Conectar USB-OPEN</button>
+                    <div class="form-row" style="margin-top:1rem;">
+                        <button class="btn" onclick="healthPython()">Health</button>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Potencia:</label>
+                        <input type="number" id="rf-power" class="form-input" min="0" max="30" step="1" placeholder="0-30">
+                        <button class="btn" onclick="getPower()">Obtener</button>
+                        <button class="btn btn-warning" onclick="setPower()">Establecer</button>
+                    </div>
                 </div>
             </div>
 
@@ -484,18 +489,28 @@
                 <h3 class="device-title">CF816 - Lector Ethernet (TCP/IP)</h3>
                 <div class="form-row">
                     <label class="form-label">IP:</label>
-                    <input type="text" id="cf816-ip" value="192.168.1.100" class="form-input">
+                    <input type="text" id="cf816-ip" value="192.168.1.200" class="form-input">
                     <label class="form-label">Puerto:</label>
-                    <input type="number" id="cf816-port" value="8080" class="form-input">
+                    <input type="number" id="cf816-port" value="6000" class="form-input">
                 </div>
-                <button class="btn btn-primary" onclick="connectCF816()">Conectar CF816</button>
+                <div class="form-row">
+                    <button class="btn btn-primary" onclick="connectCF816Python()">Conectar CF816</button>
+                    <button class="btn" onclick="healthCF816()">Health</button>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Potencia:</label>
+                    <input type="number" id="cf816-rf-power" class="form-input" min="0" max="30" step="1" placeholder="0-30">
+                    <button class="btn" onclick="getPowerCF816()">Obtener</button>
+                    <button class="btn btn-warning" onclick="setPowerCF816()">Establecer</button>
+                </div>
+                <div class="form-row" style="margin-top:0.5rem;">
+                    <button class="btn btn-success" onclick="startReadingCF816()">Iniciar Lectura CF816</button>
+                    <button class="btn btn-warning" onclick="stopReadingCF816()">Detener Lectura CF816</button>
+                </div>
             </div>
 
             <div class="controls-grid">
                 <button class="btn btn-danger" onclick="disconnectAll()">Desconectar Todos</button>
-                <button class="btn btn-success" onclick="checkStatus()">Verificar Estado</button>
-                <button class="btn btn-warning" onclick="startReading()">Iniciar Lectura</button>
-                <button class="btn btn-warning" onclick="stopReading()">Detener Lectura</button>
             </div>
 
             <!-- Sección de Logs Detallados -->
@@ -539,11 +554,13 @@
 
     <script>
         const API_BASE = '/api';
+        const PY_BASE = 'http://127.0.0.1:5005';
         const logsContainer = document.getElementById('logs');
         const detailedLogsContainer = document.getElementById('detailed-logs');
         let autoScroll = true;
         let detailedLogs = [];
         let isPolling = false;
+        const sessionState = { tagCount: 0, lastEpc: null, uniqueSet: new Set(), uniqueCount: 0 };
             // Anti-duplicados y control incremental por dispositivo
             const seenLogKeys = new Set(); // clave: `${timestamp}|${type}|${message}`
             const lastLogTimestamp = { cf601: null, cf816: null, system: null };
@@ -646,110 +663,189 @@
             }
         }
 
+        // ================= CF816 (Python) =================
+        async function connectCF816Python() {
+            const ip = document.getElementById('cf816-ip').value;
+            const port = parseInt(document.getElementById('cf816-port').value);
+            addLog(`Conectando CF816 en ${ip}:${port} (Python)...`, 'info');
+            addDetailedLog('POST /cf816/net/open', 'http', { url: `${PY_BASE}/cf816/net/open`, body: { ip, port, timeoutMs: 200 } });
+            try {
+                const r = await fetch(`${PY_BASE}/cf816/net/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip, port, timeoutMs: 200 }) });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /cf816/net/open', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok && j.success) {
+                    addLog(j.message || 'CF816 conectado', 'success');
+                    updateDeviceStatus('cf816', true);
+                } else {
+                    addLog(`Error conectando CF816: ${(j && j.message) || r.statusText}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Excepción conectando CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function healthCF816() {
+            // Usa health general y estado local
+            await healthPython();
+        }
+
+        async function getPowerCF816() {
+            addDetailedLog('GET /cf816/rf/power', 'http', { url: `${PY_BASE}/cf816/rf/power` });
+            try {
+                const r = await fetch(`${PY_BASE}/cf816/rf/power`);
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /cf816/rf/power GET', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok && j.success) {
+                    document.getElementById('cf816-rf-power').value = j.power;
+                    addLog(`CF816 Potencia actual: ${j.power}`, 'success');
+                } else {
+                    addLog(`Error obteniendo potencia CF816: ${(j && j.message) || r.statusText}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Excepción potencia CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function setPowerCF816() {
+            const val = parseInt(document.getElementById('cf816-rf-power').value);
+            if (Number.isNaN(val)) { addLog('Ingresa potencia CF816 válida (0-30)', 'warning'); return; }
+            addDetailedLog('POST /cf816/rf/power', 'http', { url: `${PY_BASE}/cf816/rf/power`, body: { power: val } });
+            try {
+                const r = await fetch(`${PY_BASE}/cf816/rf/power`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ power: val }) });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /cf816/rf/power POST', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok && j.success) {
+                    addLog(`CF816 Potencia establecida: ${val}`, 'success');
+                } else {
+                    addLog(`Error estableciendo potencia CF816: ${(j && j.message) || r.statusText}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Excepción set potencia CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function startReadingCF816() {
+            addDetailedLog('POST /cf816/inventory/start', 'http', { url: `${PY_BASE}/cf816/inventory/start` });
+            try {
+                const r = await fetch(`${PY_BASE}/cf816/inventory/start`, { method: 'POST' });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /cf816/inventory/start', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (!r.ok || !j.success) {
+                    addLog(`Error iniciar CF816: ${(j && j.message) || r.statusText}`, 'error');
+                    return;
+                }
+                addLog(j.message || 'CF816 inventario listo (polling)', 'success');
+                if (!window.__cf816Poll) {
+                    window.__cf816Poll = setInterval(async () => {
+                        try {
+                            const r2 = await fetch(`${PY_BASE}/cf816/get-tag`);
+                            const j2 = await r2.json().catch(() => ({}));
+                            if (j2 && j2.success && j2.tag && j2.tag.epc) {
+                                addDetailedLog('CF816 TAG recibido', 'success', j2);
+                                addLog(`CF816 EPC=${j2.tag.epc}`, 'info');
+                            }
+                        } catch {}
+                    }, 200);
+                }
+            } catch (e) {
+                addLog(`Excepción iniciar CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function stopReadingCF816() {
+            addDetailedLog('POST /cf816/inventory/stop', 'http', { url: `${PY_BASE}/cf816/inventory/stop` });
+            try {
+                const r = await fetch(`${PY_BASE}/cf816/inventory/stop`, { method: 'POST' });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /cf816/inventory/stop', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (window.__cf816Poll) { clearInterval(window.__cf816Poll); window.__cf816Poll = null; }
+                addLog('CF816 inventario detenido', 'success');
+            } catch (e) {
+                addLog(`Excepción detener CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function healthPython() {
+            addDetailedLog('GET /health', 'http', { url: `${PY_BASE}/health` });
+            try {
+                const r = await fetch(`${PY_BASE}/health`);
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /health', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok) {
+                    addLog(`Health OK • arch=${j.arch} • hComm=${j.hComm}`, 'success');
+                } else {
+                    addLog('Health error', 'error');
+                }
+            } catch (e) {
+                addLog(`Health excepción: ${e.message}`, 'error');
+            }
+        }
+
+        async function getPower() {
+            addDetailedLog('GET /rf/power', 'http', { url: `${PY_BASE}/rf/power` });
+            try {
+                const r = await fetch(`${PY_BASE}/rf/power`);
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /rf/power GET', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok && j.success) {
+                    document.getElementById('rf-power').value = j.power;
+                    addLog(`Potencia actual: ${j.power}`, 'success');
+                } else {
+                    addLog(`Error obteniendo potencia: ${(j && j.message) || r.statusText}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Excepción obteniendo potencia: ${e.message}`, 'error');
+            }
+        }
+
+        async function setPower() {
+            const val = parseInt(document.getElementById('rf-power').value);
+            if (Number.isNaN(val)) { addLog('Ingresa una potencia válida (0-30)', 'warning'); return; }
+            addDetailedLog('POST /rf/power', 'http', { url: `${PY_BASE}/rf/power`, body: { power: val } });
+            try {
+                const r = await fetch(`${PY_BASE}/rf/power`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ power: val }) });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /rf/power POST', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (r.ok && j.success) {
+                    addLog(`Potencia establecida: ${val}`, 'success');
+                } else {
+                    addLog(`Error estableciendo potencia: ${(j && j.message) || r.statusText}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Excepción estableciendo potencia: ${e.message}`, 'error');
+            }
+        }
+
         // Funciones para CF601
         function toggleCF601Mode() {
-            const mode = document.getElementById('cf601-mode').value;
             const serialConfig = document.getElementById('cf601-serial-config');
             const hidConfig = document.getElementById('cf601-hid-config');
-            
-            if (mode === 'serial') {
-                serialConfig.style.display = 'block';
-                hidConfig.style.display = 'none';
-            } else {
-                serialConfig.style.display = 'none';
-                hidConfig.style.display = 'block';
-                loadHIDDevices();
-            }
+            serialConfig.style.display = 'none';
+            hidConfig.style.display = 'block';
         }
 
-        async function loadHIDDevices() {
-            addLog('Cargando dispositivos HID...', 'info');
-            addDetailedLog('Solicitando lista de dispositivos HID', 'http', {
-                url: `${API_BASE}/hid/list`,
-                method: 'GET'
-            });
-            
-            try {
-                const response = await fetch(`${API_BASE}/hid/list`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    const select = document.getElementById('cf601-hid-device');
-                    select.innerHTML = '<option value="">Seleccionar dispositivo HID...</option>';
-                    
-                    result.devices.forEach(device => {
-                        const option = document.createElement('option');
-                        option.value = device.path;
-                        option.textContent = `${device.manufacturer || 'Unknown'} - ${device.product || 'Unknown'} (${device.path})`;
-                        option.dataset.vendorId = device.vendorId;
-                        option.dataset.productId = device.productId;
-                        select.appendChild(option);
-                    });
-                    
-                    addLog(`${result.devices.length} dispositivos HID encontrados`, 'success');
-                    addDetailedLog('Dispositivos HID cargados', 'success', result.devices);
-                } else {
-                    addLog(`Error cargando HID: ${result.message}`, 'error');
-                    addDetailedLog('Error cargando dispositivos HID', 'error', result);
-                }
-            } catch (error) {
-                addLog(`Error cargando HID: ${error.message}`, 'error');
-                addDetailedLog('Excepción cargando HID', 'error', {
-                    message: error.message,
-                    stack: error.stack
-                });
-            }
-        }
+        // USB-OPEN (Python) no requiere listado; la DLL gestiona el dispositivo
 
         async function connectCF601HID() {
-            const select = document.getElementById('cf601-hid-device');
-            const selectedOption = select.options[select.selectedIndex];
-            
-            if (!selectedOption.value) {
-                addLog('Selecciona un dispositivo HID', 'warning');
-                return;
-            }
-            
-            addLog(`Conectando CF601 por USB-OPEN...`, 'info');
-            addDetailedLog('Iniciando conexión CF601 USB-OPEN', 'info', {
-                path: selectedOption.value,
-                vendorId: selectedOption.dataset.vendorId,
-                productId: selectedOption.dataset.productId
-            });
-            
+            addLog(`Conectando CF601 por USB-OPEN (Python)...`, 'info');
+            addDetailedLog('POST /open (Python)', 'http', { url: `${PY_BASE}/open` });
             try {
-                const response = await fetch(`${API_BASE}/hardware/connect/cf601-usbopen`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        path: selectedOption.value,
-                        vendorId: parseInt(selectedOption.dataset.vendorId),
-                        productId: parseInt(selectedOption.dataset.productId)
-                    })
-                });
-                
-                const result = await response.json();
-                addDetailedLog('Respuesta conexión CF601 USB-OPEN', 'http', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    data: result
-                });
-                
-                if (result.success) {
-                    addLog(`${result.message}`, 'success');
-                    addDetailedLog('Conexión CF601 USB-OPEN exitosa', 'success', result);
+                const response = await fetch(`${PY_BASE}/open`, { method: 'POST' });
+                const result = await response.json().catch(() => ({}));
+                addDetailedLog('Respuesta /open (Python)', 'http', { status: response.status, statusText: response.statusText, result });
+                if (response.ok && result && result.success) {
+                    addLog(`${result.message || 'Dispositivo abierto'}`, 'success');
+                    addDetailedLog('Conexión CF601 USB-OPEN (Python) exitosa', 'success', result);
+                    addDetailedLog(`CF601 abierto • arch=${result.arch} • dll=${result.dll_path} • hComm=${result.hComm}`, 'info');
                     updateDeviceStatus('cf601', true);
                     updateSystemStatus(true);
                 } else {
-                    addLog(`Error: ${result.message}`, 'error');
-                    addDetailedLog('Error en conexión CF601 USB-OPEN', 'error', result);
+                    addLog(`Error al abrir (Python): ${(result && result.message) || response.statusText}`, 'error');
+                    addDetailedLog('Error en /open (Python)', 'error', { status: response.status, result });
                 }
             } catch (error) {
-                addLog(`Error conectando CF601 USB-OPEN: ${error.message}`, 'error');
-                addDetailedLog('Excepción en conexión CF601 USB-OPEN', 'error', {
-                    message: error.message,
-                    stack: error.stack
-                });
+                addLog(`Error conectando CF601 USB-OPEN (Python): ${error.message}`, 'error');
+                addDetailedLog('Excepción en /open (Python)', 'error', { message: error.message });
             }
         }
 
@@ -801,74 +897,69 @@
             }
         }
 
-        async function connectCF816() {
-            const ip = document.getElementById('cf816-ip').value;
-            const port = parseInt(document.getElementById('cf816-port').value);
-            
-            addLog(`Conectando CF816 en ${ip}:${port}...`, 'info');
-            addDetailedLog('Iniciando conexión CF816', 'info', { ip, port });
-            
-            try {
-                addDetailedLog('Enviando petición HTTP a API', 'http', {
-                    url: `${API_BASE}/hardware/connect/cf816`,
-                    method: 'POST',
-                    body: { ip, port }
-                });
-                
-                const response = await fetch(`${API_BASE}/hardware/connect/cf816`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, port })
-                });
-                
-                addDetailedLog('Respuesta HTTP recibida', 'http', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries())
-                });
-                
-                const result = await response.json();
-                addDetailedLog('Datos de respuesta parseados', 'debug', result);
-                
-                if (result.success) {
-                    addLog(`${result.message}`, 'success');
-                    addDetailedLog('Conexión CF816 exitosa', 'success', result);
-                    updateDeviceStatus('cf816', true);
-                    updateSystemStatus(true);
-                } else {
-                    addLog(`Error: ${result.message}`, 'error');
-                    addDetailedLog('Error en conexión CF816', 'error', result);
-                }
-            } catch (error) {
-                addLog(`Error conectando CF816: ${error.message}`, 'error');
-                addDetailedLog('Excepción en conexión CF816', 'error', {
-                    message: error.message,
-                    stack: error.stack,
-                    name: error.name
-                });
-            }
-        }
+        // CF816 Legacy deshabilitado
 
         async function startReading() {
+            const mode = document.getElementById('cf601-mode')?.value;
+            // Si HID (USB-OPEN), usar Python directamente
+            if (mode === 'hid') {
+                addLog('Iniciando lectura (Python)...', 'info');
+                addDetailedLog('POST /inventory/start (Python)', 'http', { url: `${PY_BASE}/inventory/start` });
+                try {
+                    const rStart = await fetch(`${PY_BASE}/inventory/start`, { method: 'POST' });
+                    const jStart = await rStart.json().catch(() => ({}));
+                    addDetailedLog('Respuesta /inventory/start (Python)', 'http', { status: rStart.status, statusText: rStart.statusText, result: jStart });
+                    if (!rStart.ok || !jStart.success) {
+                        addLog(`Error iniciando (Python): ${(jStart && jStart.message) || rStart.statusText}`, 'error');
+                        addDetailedLog('Error al iniciar inventario (Python)', 'error', jStart);
+                        return;
+                    }
+                    addLog(jStart.message || 'Inventario iniciado (Python)', 'success');
+                    addDetailedLog('Inventario iniciado (Python)', 'success', jStart);
+                    sessionState.tagCount = 0; sessionState.lastEpc = null;
+                    // Iniciar polling de tags (ligero) para visualizar sin depender de backend
+                    if (!window.__pyTagPoll) {
+                        window.__pyTagPoll = setInterval(async () => {
+                            try {
+                                const r = await fetch(`${PY_BASE}/get-tag`);
+                                const j = await r.json().catch(() => ({}));
+                                if (j && j.success && j.tag && j.tag.epc) {
+                                    sessionState.tagCount += 1;
+                                    sessionState.lastEpc = j.tag.epc;
+                                    const wasNew = !sessionState.uniqueSet.has(j.tag.epc);
+                                    if (wasNew) { sessionState.uniqueSet.add(j.tag.epc); sessionState.uniqueCount += 1; }
+                                    addDetailedLog(`TAG recibido (Python) • total=${sessionState.tagCount} • únicos=${sessionState.uniqueCount}`, 'success', j);
+                                    const infoLine = `EPC=${j.tag.epc} RSSI=${j.tag.rssi ?? 'NA'} ANT=${j.tag.antenna ?? 'NA'} CH=${j.tag.channel ?? 'NA'}`;
+                                    addLog(infoLine, 'info');
+                                } else if (j && j.success && j.tag === null) {
+                                    // No spamear, solo trazar de vez en cuando
+                                    if (!window.__pyNoTagCount) window.__pyNoTagCount = 0;
+                                    window.__pyNoTagCount++;
+                                    if (window.__pyNoTagCount % 20 === 0) {
+                                        addDetailedLog('Sin tags en rango (Python)', 'debug');
+                                    }
+                                } else if (!r.ok) {
+                                    addDetailedLog('Error HTTP en /get-tag (Python)', 'error', { status: r.status, statusText: r.statusText });
+                                }
+                            } catch (_) {}
+                        }, 150);
+                    }
+                } catch (error) {
+                    addLog(`Error iniciando (Python): ${error.message}`, 'error');
+                    addDetailedLog('Error iniciando (Python)', 'error', { message: error.message });
+                }
+                return;
+            }
+
+            // Default: backend Node
             addLog('Iniciando lectura en todos los dispositivos...', 'info');
             addDetailedLog('Iniciando lectura en todos los dispositivos', 'info');
-            
             try {
-                addDetailedLog('Enviando petición HTTP para iniciar lectura', 'http', {
-                    url: `${API_BASE}/hardware/start-all`,
-                    method: 'POST'
-                });
-                
+                addDetailedLog('Enviando petición HTTP para iniciar lectura', 'http', { url: `${API_BASE}/hardware/start-all`, method: 'POST' });
                 const response = await fetch(`${API_BASE}/hardware/start-all`, { method: 'POST' });
-                addDetailedLog('Respuesta HTTP recibida para iniciar lectura', 'http', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries())
-                });
-                
+                addDetailedLog('Respuesta HTTP recibida para iniciar lectura', 'http', { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) });
                 const result = await response.json();
                 addDetailedLog('Datos de respuesta parseados para iniciar lectura', 'debug', result);
-                
                 if (result.success) {
                     addLog(`${result.message}`, 'success');
                     addDetailedLog('Lectura iniciada exitosamente', 'success', result);
@@ -878,34 +969,42 @@
                 }
             } catch (error) {
                 addLog(`Error iniciando lectura: ${error.message}`, 'error');
-                addDetailedLog('Excepción iniciando lectura', 'error', {
-                    message: error.message,
-                    stack: error.stack,
-                    name: error.name
-                });
+                addDetailedLog('Excepción iniciando lectura', 'error', { message: error.message, stack: error.stack, name: error.name });
             }
         }
 
         async function stopReading() {
+            const mode = document.getElementById('cf601-mode')?.value;
+            if (mode === 'hid') {
+                addLog('Deteniendo lectura (Python)...', 'info');
+                addDetailedLog('POST /inventory/stop (Python)', 'http', { url: `${PY_BASE}/inventory/stop` });
+                try {
+                    const rStop = await fetch(`${PY_BASE}/inventory/stop`, { method: 'POST' });
+                    const jStop = await rStop.json().catch(() => ({}));
+                    addDetailedLog('Respuesta /inventory/stop (Python)', 'http', { status: rStop.status, statusText: rStop.statusText, result: jStop });
+                    if (window.__pyTagPoll) { clearInterval(window.__pyTagPoll); window.__pyTagPoll = null; }
+                    if (rStop.ok && jStop && jStop.success) {
+                        addLog(jStop.message || 'Lectura detenida (Python)', 'success');
+                        addDetailedLog(`Lectura detenida (Python) • total=${sessionState.tagCount} • únicos=${sessionState.uniqueCount} • ultimo=${sessionState.lastEpc || 'N/A'}`, 'success', jStop);
+                    } else {
+                        addLog(`Error deteniendo (Python): ${(jStop && jStop.message) || rStop.statusText}`, 'error');
+                        addDetailedLog('Error al detener inventario (Python)', 'error', jStop);
+                    }
+                } catch (error) {
+                    addLog(`Error deteniendo (Python): ${error.message}`, 'error');
+                    addDetailedLog('Error deteniendo (Python)', 'error', { message: error.message });
+                }
+                return;
+            }
+
             addLog('Deteniendo lectura en todos los dispositivos...', 'info');
             addDetailedLog('Deteniendo lectura en todos los dispositivos', 'info');
-            
             try {
-                addDetailedLog('Enviando petición HTTP para detener lectura', 'http', {
-                    url: `${API_BASE}/hardware/stop-all`,
-                    method: 'POST'
-                });
-                
+                addDetailedLog('Enviando petición HTTP para detener lectura', 'http', { url: `${API_BASE}/hardware/stop-all`, method: 'POST' });
                 const response = await fetch(`${API_BASE}/hardware/stop-all`, { method: 'POST' });
-                addDetailedLog('Respuesta HTTP recibida para detener lectura', 'http', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries())
-                });
-                
+                addDetailedLog('Respuesta HTTP recibida para detener lectura', 'http', { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) });
                 const result = await response.json();
                 addDetailedLog('Datos de respuesta parseados para detener lectura', 'debug', result);
-                
                 if (result.success) {
                     addLog(`${result.message}`, 'success');
                     addDetailedLog('Lectura detenida exitosamente', 'success', result);
@@ -915,31 +1014,27 @@
                 }
             } catch (error) {
                 addLog(`Error deteniendo lectura: ${error.message}`, 'error');
-                addDetailedLog('Excepción deteniendo lectura', 'error', {
-                    message: error.message,
-                    stack: error.stack,
-                    name: error.name
-                });
+                addDetailedLog('Excepción deteniendo lectura', 'error', { message: error.message, stack: error.stack, name: error.name });
             }
         }
 
         async function disconnectAll() {
-            addLog('Desconectando todos los dispositivos...', 'info');
-            
+            addLog('Desconectando dispositivos (Python)...', 'info');
             try {
-                const response = await fetch(`${API_BASE}/hardware/disconnect-all`, { method: 'POST' });
-                const result = await response.json();
-                
-                if (result.success) {
-                    addLog(`${result.message}`, 'success');
-                    updateDeviceStatus('cf601', false);
-                    updateDeviceStatus('cf816', false);
-                    updateSystemStatus(false);
-                } else {
-                    addLog(`Error: ${result.message}`, 'error');
+                try {
+                    const rClose = await fetch(`${PY_BASE}/close`, { method: 'POST' });
+                    const jClose = await rClose.json().catch(() => ({}));
+                    addDetailedLog('Respuesta /close (Python)', 'http', { status: rClose.status, statusText: rClose.statusText, result: jClose });
+                } catch (e) {
+                    addDetailedLog('Excepción /close (Python)', 'error', { message: e.message });
                 }
+                if (window.__pyTagPoll) { clearInterval(window.__pyTagPoll); window.__pyTagPoll = null; }
+                updateDeviceStatus('cf601', false);
+                updateDeviceStatus('cf816', false);
+                updateSystemStatus(false);
+                addLog('Desconexión completada (Python)', 'success');
             } catch (error) {
-                addLog(`Error desconectando dispositivos: ${error.message}`, 'error');
+                addLog(`Error desconectando (Python): ${error.message}`, 'error');
             }
         }
 
@@ -1064,54 +1159,8 @@
 
         // Función para obtener logs del servidor
         async function fetchServerLogs() {
-            if (isPolling) return; // Evitar múltiples llamadas simultáneas
-            
-            isPolling = true;
-            try {
-                const response = await fetch(`${API_BASE}/server-logs`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Procesar logs del CF601 (solo logs nuevos comparando timestamp)
-                    if (result.serverLogs.cf601) {
-                        const last = lastLogTimestamp.cf601;
-                        let maxTs = last;
-                        result.serverLogs.cf601
-                            .filter(log => !last || (log.timestamp && log.timestamp > last))
-                            .forEach(log => {
-                                // Filtrar logs de conexión repetitivos
-                                if (!log.message.includes('Intentando conectar') && 
-                                    !log.message.includes('Puerto CF601 abierto') &&
-                                    !log.message.includes('CF601 conectado exitosamente')) {
-                                    addDetailedLog(log.message, log.type, log.data, log.timestamp);
-                                    if (!maxTs || (log.timestamp && log.timestamp > maxTs)) maxTs = log.timestamp;
-                                }
-                            });
-                        if (maxTs) lastLogTimestamp.cf601 = maxTs;
-                    }
-                    
-                    // Procesar logs del CF816 (solo logs nuevos comparando timestamp)
-                    if (result.serverLogs.cf816) {
-                        const last = lastLogTimestamp.cf816;
-                        let maxTs = last;
-                        result.serverLogs.cf816
-                            .filter(log => !last || (log.timestamp && log.timestamp > last))
-                            .forEach(log => {
-                                // Filtrar logs de conexión repetitivos
-                                if (!log.message.includes('Intentando conectar') && 
-                                    !log.message.includes('CF816 conectado exitosamente')) {
-                                    addDetailedLog(log.message, log.type, log.data, log.timestamp);
-                                    if (!maxTs || (log.timestamp && log.timestamp > maxTs)) maxTs = log.timestamp;
-                                }
-                            });
-                        if (maxTs) lastLogTimestamp.cf816 = maxTs;
-                    }
-                }
-            } catch (error) {
-                // Silenciar errores de polling
-            } finally {
-                isPolling = false;
-            }
+            addDetailedLog('Logs del backend Legacy deshabilitados. Usa los logs de Python.', 'info');
+            return;
         }
 
         // Inicializar
@@ -1122,9 +1171,7 @@
                 timestamp: new Date().toISOString()
             });
             
-            loadPorts();
-            loadHIDDevices(); // Cargar dispositivos HID al inicio
-            checkStatus();
+            // Sin backend Legacy: no verificar estado /api
             addLog('RFID Control Center iniciado', 'success');
             addDetailedLog('Aplicación iniciada correctamente', 'success');
             

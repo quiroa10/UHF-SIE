@@ -1,0 +1,39 @@
+{
+  "name": "chafon-rfid-reader",
+  "version": "1.0.0",
+  "description": "Sistema de integración para lectores RFID UHF Chafon CF601 y CF816",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "rfid",
+    "chafon",
+    "cf601",
+    "cf816",
+    "uhf",
+    "epc"
+  ],
+  "author": "Ingeniero David",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "serialport": "^12.0.0",
+    "@serialport/parser-readline": "^12.0.0",
+    "node-hid": "^3.2.0",
+    "ffi-napi": "^4.0.3",
+    "ref-napi": "^3.0.3",
+    "ref-struct-di": "^1.1.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

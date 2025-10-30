@@ -146,3 +146,38 @@ config.development.js
 logs/
 *.log
 rfid-logs/
+
+# =====================
+# Python
+# =====================
+.venv/
+.venv32/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Variables de entorno adicionales
+.env.*
+*.env
+
+# IDE extra
+*.code-workspace
+
+# Artefactos genéricos de build/coverage
+coverage/
+dist/
+build/
+.cache/
+
+# Binarios/SDK (evitar subir DLLs/EXEs propietarios)
+*.dll
+*.lib
+*.exe
+*.bin
+
+# Legacy artefactos
+Legacy/**/node_modules/
+Legacy/**/logs/

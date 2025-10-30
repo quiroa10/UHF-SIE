@@ -11,19 +11,30 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Resolver ruta de la DLL desde el SDK incluido en el repo
 ROOT = os.path.abspath(os.path.dirname(__file__))
 DLL_CANDIDATES = [
+    # Primero buscar en el directorio actual (más fácil para el cliente)
+    os.path.join(ROOT, 'UHFPrimeReader.dll'),
+    # Luego buscar en rutas del SDK
     os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'API', 'UHFPrimeReader.dll'),
     os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Software V1.1.2', 'UHFPrimeReader.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Sample', 'Delphi', 'UHFPrimeReader.dll'),
     os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Sample', 'python', 'UHFPrimeReader.dll'),
 ]
 
 def resolve_dll():
+    print("[DEBUG] Buscando UHFPrimeReader.dll en:")
     for p in DLL_CANDIDATES:
+        print(f"  - {p} {'✓' if os.path.exists(p) else '✗'}")
         if os.path.exists(p):
+            print(f"[DEBUG] DLL encontrada en: {p}")
             return p
     return None
 
 DLL_PATH = resolve_dll()
 if not DLL_PATH:
+    print("\n[ERROR] No se encontró UHFPrimeReader.dll")
+    print("\nSoluciones:")
+    print("1. Copia UHFPrimeReader.dll al directorio del proyecto")
+    print("2. O asegúrate de tener la carpeta vendor_sdk/ completa")
     raise RuntimeError('No se encontró UHFPrimeReader.dll en el SDK')
 
 lib = cdll.LoadLibrary(DLL_PATH)
@@ -173,7 +184,21 @@ def health():
 # =====================
 # CF816 (TCP/IP) via UHFReader288.dll (x86)
 # =====================
-CF816_DLL_PATH = os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'VC', 'x32', 'UHFReader288.dll')
+CF816_DLL_CANDIDATES = [
+    # Primero buscar en el directorio actual
+    os.path.join(ROOT, 'UHFReader288.dll'),
+    # Luego buscar en rutas del SDK
+    os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'VC', 'x32', 'UHFReader288.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'C#', 'x86', 'UHFReader288.dll'),
+]
+
+def resolve_cf816_dll():
+    for p in CF816_DLL_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    return None
+
+CF816_DLL_PATH = resolve_cf816_dll()
 cf816 = None
 hNet = c_int(0)
 cf816ComAdr = c_ubyte(0xFF)
@@ -182,8 +207,10 @@ def load_cf816_dll():
     global cf816
     if cf816:
         return True
-    if not os.path.exists(CF816_DLL_PATH):
+    if not CF816_DLL_PATH or not os.path.exists(CF816_DLL_PATH):
+        print(f"[DEBUG CF816] DLL no encontrada en: {CF816_DLL_PATH}")
         return False
+    print(f"[DEBUG CF816] Cargando DLL desde: {CF816_DLL_PATH}")
     try:
         cf816 = cdll.LoadLibrary(CF816_DLL_PATH)
         # Firmas necesarias

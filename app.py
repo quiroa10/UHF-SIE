@@ -328,6 +328,7 @@ def load_cf816_dll():
         return False
     print(f"[DEBUG CF816] Cargando DLL desde: {CF816_DLL_PATH}")
     try:
+        # Cargar DLL con WinDLL para funciones stdcall en Windows
         cf816 = cdll.LoadLibrary(CF816_DLL_PATH)
         # Firmas necesarias
         # int OpenNetPort(int Port, LPCTSTR IPaddr, BYTE* ComAdr, int *Frmhandle);
@@ -335,9 +336,6 @@ def load_cf816_dll():
         cf816.OpenNetPort.argtypes = [c_int, c_char_p, POINTER(c_ubyte), POINTER(c_int)]
         cf816.CloseNetPort.restype = c_int
         cf816.CloseNetPort.argtypes = [c_int]
-        # InitRFIDCallBack(pRFIDCallBack pUIDback,BOOL isBackUID,int FrmHandle)
-        cf816.InitRFIDCallBack.restype = None
-        cf816.InitRFIDCallBack.argtypes = [c_void_p, c_bool, c_int]
         # SingleTagInventory_G2(BYTE *address, BYTE* EPC, int *EPCLength, int *CardNum, int FrmHandle)
         cf816.SingleTagInventory_G2.restype = c_int
         cf816.SingleTagInventory_G2.argtypes = [POINTER(c_ubyte), POINTER(c_ubyte), POINTER(c_int), POINTER(c_int), c_int]
@@ -349,6 +347,16 @@ def load_cf816_dll():
         # StopImmediately optional
         cf816.StopImmediately.restype = c_int
         cf816.StopImmediately.argtypes = [POINTER(c_ubyte), c_int]
+        
+        # InitRFIDCallBack es opcional - intentar cargar
+        try:
+            cf816.InitRFIDCallBack.restype = None
+            cf816.InitRFIDCallBack.argtypes = [c_void_p, c_bool, c_int]
+            print("[DEBUG CF816] InitRFIDCallBack configurado")
+        except AttributeError:
+            print("[WARN CF816] InitRFIDCallBack no encontrada en DLL - continuando sin callback")
+        
+        print("[DEBUG CF816] DLL cargada exitosamente")
         return True
     except Exception as e:
         print(f"[ERROR CF816] Fallo al cargar DLL: {e}")
@@ -371,9 +379,13 @@ def cf816_net_open():
         rc = cf816.OpenNetPort(port, c_char_p(ip), byref(cf816ComAdr), byref(hNet))
         if rc != 0:
             return jsonify(success=False, message=f'OpenNetPort rc={rc}', cf816_dll=CF816_DLL_PATH, frmHandle=hNet.value, comAdr=int(cf816ComAdr.value)), 500
-        # Inicializar callback según ejemplos
+        # Inicializar callback según ejemplos (opcional)
         if hNet.value > 0:
-            cf816.InitRFIDCallBack(None, False, hNet.value)
+            try:
+                cf816.InitRFIDCallBack(None, False, hNet.value)
+                print(f"[DEBUG CF816] InitRFIDCallBack llamado")
+            except AttributeError:
+                print("[WARN CF816] InitRFIDCallBack no disponible")
         return jsonify(success=True, message='CF816 abierto', frmHandle=hNet.value, comAdr=int(cf816ComAdr.value), cf816_dll=CF816_DLL_PATH)
     except Exception as e:
         print(f"[ERROR CF816] Excepción en /cf816/net/open: {e}")

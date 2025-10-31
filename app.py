@@ -407,7 +407,7 @@ def cf816_get_tag():
     card_num = c_int(0)
     rc = cf816.SingleTagInventory_G2(byref(cf816ComAdr), epc_buf, byref(epc_len), byref(card_num), hNet.value)
     if rc != 0 or card_num.value <= 0 or epc_len.value <= 0:
-        return jsonify(success=True, tag=None, rc=rc, **sys_meta(step='cf816_get_tag', rc=rc))
+        return jsonify(success=True, tag=None, **sys_meta(step='cf816_get_tag', rc=rc))
     epc_hex = ''.join(f'{b:02X}' for b in list(epc_buf)[:epc_len.value])
     return jsonify(success=True, tag={'epc': epc_hex}, **sys_meta(step='cf816_get_tag', rc=rc))
 

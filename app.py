@@ -187,7 +187,9 @@ def inventory_start():
             return jsonify(success=False, message='No abierto', **sys_meta(step='inventory_start')), 400
         if _inv_running:
             return jsonify(success=True, message='Inventario ya iniciado', **sys_meta(step='inventory_start'))
+        print(f"[DEBUG] Llamando InventoryContinue con hComm={hComm.value}")
         rc = lib.InventoryContinue(hComm.value, c_ubyte(0), byref(c_int(0)))
+        print(f"[DEBUG] InventoryContinue devolvió rc={rc}")
         if rc != 0:
             return jsonify(success=False, message=f'InventoryContinue rc={rc}', **sys_meta(step='inventory_start', rc=rc)), 500
         _inv_running = True

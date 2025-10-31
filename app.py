@@ -200,20 +200,23 @@ def get_tag():
     tag = TagInfo()
     rc = lib.GetTagUii(hComm.value, byref(tag), 200)
     if rc != 0:
-        # sin datos o timeout
+        # sin datos o timeout (rc puede ser != 0 normal si no hay tags)
         return jsonify(success=True, tag=None, **sys_meta(step='get_tag', rc=rc))
     epc_len = int(tag.m_len)
-    epc_hex = ''.join(f'{b:02X}' for b in list(tag.m_code)[:epc_len])
-    return jsonify(
-        success=True,
-        tag={
-            'epc': epc_hex,
-            'rssi': int(tag.m_rssi),
-            'antenna': int(tag.m_ant),
-            'channel': int(tag.m_channel)
-        },
-        **sys_meta(step='get_tag', rc=rc)
-    )
+    if epc_len > 0:
+        epc_hex = ''.join(f'{b:02X}' for b in list(tag.m_code)[:epc_len])
+        print(f"[DEBUG] TAG leído: epc={epc_hex}, rssi={tag.m_rssi}, ant={tag.m_ant}")
+        return jsonify(
+            success=True,
+            tag={
+                'epc': epc_hex,
+                'rssi': int(tag.m_rssi),
+                'antenna': int(tag.m_ant),
+                'channel': int(tag.m_channel)
+            },
+            **sys_meta(step='get_tag', rc=rc)
+        )
+    return jsonify(success=True, tag=None, **sys_meta(step='get_tag', rc=rc))
 
 @app.post('/inventory/stop')
 def inventory_stop():

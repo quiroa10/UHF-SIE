@@ -112,10 +112,6 @@ class DeviceFullInfo(Structure):
         ('BUZZERTIME', c_ubyte), ('INTERNELTIME', c_ubyte)
     ]
 
-# Argumentos de funciones usadas
-lib.GetDevicePara.argtypes = [c_int, POINTER(DeviceFullInfo)]
-lib.SetRFPower.argtypes = [c_int, c_ubyte, c_ubyte]
-
 # Estructura de tag con RSSI/antena/canal
 class TagInfo(Structure):
     _fields_ = [
@@ -129,6 +125,10 @@ class TagInfo(Structure):
         ('m_code', c_ubyte*255)
     ]
 
+# Argumentos de funciones usadas
+lib.GetDevicePara.argtypes = [c_int, POINTER(DeviceFullInfo)]
+lib.SetRFPower.argtypes = [c_int, c_ubyte, c_ubyte]
+lib.InventoryContinue.argtypes = [c_int, c_ubyte, POINTER(c_int)]
 lib.GetTagUii.argtypes = [c_int, POINTER(TagInfo), c_int]
 
 # Estado simple en memoria
@@ -187,7 +187,7 @@ def inventory_start():
             return jsonify(success=False, message='No abierto', **sys_meta(step='inventory_start')), 400
         if _inv_running:
             return jsonify(success=True, message='Inventario ya iniciado', **sys_meta(step='inventory_start'))
-        rc = lib.InventoryContinue(hComm.value, 1, None)
+        rc = lib.InventoryContinue(hComm.value, c_ubyte(0), byref(c_int(0)))
         if rc != 0:
             return jsonify(success=False, message=f'InventoryContinue rc={rc}', **sys_meta(step='inventory_start', rc=rc)), 500
         _inv_running = True

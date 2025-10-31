@@ -4,6 +4,7 @@ from ctypes import *
 import os
 import threading
 import platform
+import time
 try:
     import serial.tools.list_ports
     SERIAL_AVAILABLE = True
@@ -127,6 +128,7 @@ class TagInfo(Structure):
 
 # Argumentos de funciones usadas
 lib.GetDevicePara.argtypes = [c_int, POINTER(DeviceFullInfo)]
+lib.SetDevicePara.argtypes = [c_int, POINTER(DeviceFullInfo)]
 lib.SetRFPower.argtypes = [c_int, c_ubyte, c_ubyte]
 lib.InventoryContinue.argtypes = [c_int, c_ubyte, POINTER(c_int)]
 lib.GetTagUii.argtypes = [c_int, POINTER(TagInfo), c_int]
@@ -187,6 +189,43 @@ def inventory_start():
             return jsonify(success=False, message='No abierto', **sys_meta(step='inventory_start')), 400
         if _inv_running:
             return jsonify(success=True, message='Inventario ya iniciado', **sys_meta(step='inventory_start'))
+        
+        # Obtener parámetros de la petición (si se envían)
+        data = request.get_json(silent=True) or {}
+        requested_antenna = data.get('antenna', None)
+        
+        # Obtener parámetros actuales del dispositivo (según ejemplos SDK)
+        print(f"[DEBUG] Obteniendo parámetros del dispositivo con hComm={hComm.value}")
+        device_info = DeviceFullInfo()
+        rc_get = lib.GetDevicePara(hComm.value, byref(device_info))
+        if rc_get != 0:
+            print(f"[WARN] GetDevicePara devolvió rc={rc_get}, usando valores por defecto")
+            # Valores por defecto razonables
+            device_info.RFIDPOWER = 20  # Potencia RF
+            device_info.WORKMODE = 0  # Modo continuo
+            device_info.ANT = 1  # Antena 1 (o 0 para todas)
+        
+        # Usar antena solicitada por el cliente si se proporciona
+        if requested_antenna is not None:
+            device_info.ANT = int(requested_antenna)
+            print(f"[DEBUG] Usando antena solicitada: {device_info.ANT}")
+        # Asegurar que la antena esté configurada (importante para detección)
+        elif device_info.ANT == 0:
+            device_info.ANT = 1  # Antena 1 por defecto si no está configurada
+        
+        # Configurar región US band por defecto (según software oficial muestra "US band")
+        # 0: Chinese band1, 1: Chinese band2, 2: US band, 3: Korean band, 4: EU band, 5: US band3, 6: ALL band
+        device_info.REGION = 2  # US band por defecto según software oficial
+        print(f"[DEBUG] Configurando región: US band (2)")
+        
+        # Configurar parámetros del dispositivo antes de iniciar inventario (según ejemplos SDK)
+        print(f"[DEBUG] Configurando parámetros del dispositivo (power={device_info.RFIDPOWER}, mode={device_info.WORKMODE}, antenna={device_info.ANT}, region={device_info.REGION})")
+        rc_set = lib.SetDevicePara(hComm.value, byref(device_info))
+        if rc_set != 0:
+            print(f"[WARN] SetDevicePara devolvió rc={rc_set}, continuando igual")
+        
+        time.sleep(0.1)  # Pequeña pausa como en ejemplos SDK
+        
         print(f"[DEBUG] Llamando InventoryContinue con hComm={hComm.value}")
         rc = lib.InventoryContinue(hComm.value, c_ubyte(0), byref(c_int(0)))
         print(f"[DEBUG] InventoryContinue devolvió rc={rc}")

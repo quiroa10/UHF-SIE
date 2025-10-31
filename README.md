@@ -42,10 +42,16 @@ Sistema de integración para lectores RFID UHF Chafon CF601 (USB-OPEN) y CF816 (
    ```cmd
    cd UHF-SIE
    ```
-3. **IMPORTANTE**: Copiar `hidapi.dll` al directorio raíz para CF601 USB-OPEN:
+3. **IMPORTANTE**: Copiar DLLs necesarias al directorio raíz:
    ```cmd
+   :: CF601 USB-OPEN
    copy "vendor_sdk\UHF Desk Reader SDK\Software V1.1.2\hidapi.dll" .
+   
+   :: CF816 TCP/IP (opcional - el script las encuentra automáticamente)
+   :: copy "vendor_sdk\CF815.CF816.CF817 SDK\SDK\VC\x32\UHFReader288.dll" .
    ```
+   
+   **Nota**: El sistema busca las DLLs automáticamente en `vendor_sdk/`, pero copiarlas al raíz simplifica la configuración.
 
 ### 3. Crear Entorno Virtual
 
@@ -74,8 +80,11 @@ start_python_32.bat
 
 **Opción B: Manual**
 ```cmd
+.venv32\Scripts\activate
 python app.py
 ```
+
+Nota: Si ejecutas manualmente, presiona `CTRL+C` para detener el servicio.
 
 El servicio estará disponible en: `http://127.0.0.1:5005`
 
@@ -112,6 +121,30 @@ Abrir `index.html` en tu navegador (Chrome/Edge recomendado).
 - **Consola**: Panel "Logs del Sistema" (lado derecho)
 - **Logs Detallados**: Panel inferior con información completa
 - **Exportar**: Botón "Exportar Logs" para guardar en archivo
+
+### Reiniciar el Servicio
+
+**Para aplicar cambios o resolver problemas:**
+
+1. **Detener el servicio**:
+   ```cmd
+   stop_python.bat
+   ```
+
+2. **Iniciar nuevamente**:
+   ```cmd
+   start_python_32.bat
+   ```
+
+**O manualmente:**
+
+1. **Detener**: Buscar y cerrar el proceso Python que usa el puerto 5005
+   ```cmd
+   netstat -ano | findstr :5005
+   taskkill /PID <numero_pid> /F
+   ```
+
+2. **Iniciar**: Ejecutar `start_python_32.bat` nuevamente
 
 ## 📡 API Endpoints
 
@@ -227,20 +260,38 @@ python -c "import platform; print(platform.architecture())"
 
 ### "OpenDevice rc=-255" (CF601 USB-OPEN)
 
-**Posibles Causas**:
-1. Dispositivo no detectado en modo USB-OPEN
-2. Falta de controlador de dispositivo
-3. Conflicto con puerto COM
+**Causa**: Error común al intentar conectar CF601 vía USB-OPEN. Indica problemas de comunicación con el dispositivo.
 
-**Soluciones**:
-1. **Verificar modo del dispositivo**: El CF601 debe estar en modo "USB-OPEN", no "COM"
-2. **Instalar controlador USB**: Asegurar que Windows reconoce el CF601 como dispositivo HID
-3. **Verificar hidapi.dll**: Copiar manualmente a la carpeta donde está `UHFPrimeReader.dll`
+**Posibles Causas**:
+1. **Dispositivo no en modo USB-OPEN**: El CF601 debe configurarse en modo USB-OPEN (no COM) mediante su software oficial o jumper
+2. **Controlador USB no instalado**: Windows no reconoce el CF601 como dispositivo HID
+3. **hidapi.dll no encontrada**: La DLL auxiliar no está en el directorio correcto
+4. **Dispositivo no conectado físicamente**
+5. **Parámetros incorrectos de conexión**: La DLL requiere configuración específica del fabricante
+
+**Soluciones (en orden)**:
+1. **Verificar modo del dispositivo**: 
+   - Usar el software oficial del fabricante para confirmar modo "USB-OPEN"
+   - Verificar configuración física (jumper/dip switch) si aplica
+2. **Verificar instalación USB**: 
+   - Windows debe reconocer el dispositivo en "Administrador de dispositivos"
+   - Buscar por "VID/PID" del fabricante Chafon
+   - Si aparece como "Unknown device", instalar controlador desde el SDK
+3. **Copiar hidapi.dll manualmente**:
+   ```cmd
+   copy "vendor_sdk\UHF Desk Reader SDK\Software V1.1.2\hidapi.dll" "vendor_sdk\UHF Desk Reader SDK\API\"
    ```
-   vendor_sdk/UHF Desk Reader SDK/Software V1.1.2/hidapi.dll
+   Verificar que exista junto a `UHFPrimeReader.dll`
+4. **Revisar logs**:
+   ```cmd
+   type logs\python_service_32.err.log
+   type logs\python_service_32.out.log
    ```
-4. **Comprobar logs**: Revisar `logs/python_service_32.err.log` para más detalles
-5. **Si persiste**: Probar alternativamente con modo COM (requiere modificar `/open` en `app.py`)
+5. **Alternativa - Modo COM**: Si USB-OPEN no funciona, probar conexión serial
+   - Cambiar modo a COM y ajustar parámetros en `app.py`
+   - Ver documentación del SDK para ejemplo COM
+
+**Nota**: `-255` puede indicar limitación del SDK en Windows. El SDK Linux/ARM incluye `OpenHidConnection`, la DLL Windows no expone esta función y requiere parámetros adicionales de configuración.
 
 ### "Health" no responde
 

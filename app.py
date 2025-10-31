@@ -10,6 +10,8 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Resolver ruta de la DLL desde el SDK incluido en el repo
 ROOT = os.path.abspath(os.path.dirname(__file__))
+# Crear carpeta de logs si no existe
+os.makedirs(os.path.join(ROOT, 'logs'), exist_ok=True)
 DLL_CANDIDATES = [
     # Primero buscar en el directorio actual (más fácil para el cliente)
     os.path.join(ROOT, 'UHFPrimeReader.dll'),
@@ -239,9 +241,14 @@ CF816_DLL_CANDIDATES = [
 ]
 
 def resolve_cf816_dll():
+    print("[DEBUG CF816] Buscando UHFReader288.dll en:")
     for p in CF816_DLL_CANDIDATES:
-        if os.path.exists(p):
+        exists = os.path.exists(p)
+        print(f"  - {p} {'[OK]' if exists else '[NO]'}")
+        if exists:
+            print(f"[DEBUG CF816] DLL encontrada en: {p}")
             return p
+    print("[DEBUG CF816] DLL no encontrada en ninguna ruta")
     return None
 
 CF816_DLL_PATH = resolve_cf816_dll()

@@ -388,6 +388,12 @@ def load_cf816_dll():
         # StopImmediately optional
         cf816.StopImmediately.restype = c_int
         cf816.StopImmediately.argtypes = [POINTER(c_ubyte), c_int]
+        # SetRegion(BYTE *address, BYTE dmaxfre, BYTE dminfre, int FrmHandle)
+        cf816.SetRegion.restype = c_int
+        cf816.SetRegion.argtypes = [POINTER(c_ubyte), c_ubyte, c_ubyte, c_int]
+        # SetAntennaMultiplexing(BYTE *ComAdr, BYTE Ant, int FrmHandle)
+        cf816.SetAntennaMultiplexing.restype = c_int
+        cf816.SetAntennaMultiplexing.argtypes = [POINTER(c_ubyte), c_ubyte, c_int]
         
         # InitRFIDCallBack es opcional - intentar cargar
         try:
@@ -420,8 +426,15 @@ def cf816_net_open():
         rc = cf816.OpenNetPort(port, c_char_p(ip), byref(cf816ComAdr), byref(hNet))
         if rc != 0:
             return jsonify(success=False, message=f'OpenNetPort rc={rc}', cf816_dll=CF816_DLL_PATH, frmHandle=hNet.value, comAdr=int(cf816ComAdr.value)), 500
-        # Inicializar callback según ejemplos (opcional)
+        # Configurar antena y región según software oficial
         if hNet.value > 0:
+            # Configurar antena ANT8 (según software oficial)
+            # Ant es máscara de bits según Delphi: ANT1=1, ANT2=2, ANT3=4, ANT4=8, ANT5=16, ANT6=32, ANT7=64, ANT8=128
+            # ANT8 = 128
+            rc_ant = cf816.SetAntennaMultiplexing(byref(cf816ComAdr), c_ubyte(128), hNet.value)
+            print(f"[DEBUG CF816] SetAntennaMultiplexing(ANT8=128) rc={rc_ant}")
+            
+            # Inicializar callback según ejemplos (opcional)
             try:
                 cf816.InitRFIDCallBack(None, False, hNet.value)
                 print(f"[DEBUG CF816] InitRFIDCallBack llamado")

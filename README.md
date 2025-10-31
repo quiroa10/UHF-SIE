@@ -1,202 +1,353 @@
 # Sistema de Integración Chafon RFID
 
-Sistema de integración para lectores RFID UHF Chafon CF601 y CF816 con interfaz web y API REST.
+Sistema de integración para lectores RFID UHF Chafon CF601 (USB-OPEN) y CF816 (TCP/IP) con microservicio Python e interfaz web HTML5.
 
 ## 🚀 Características
 
-- **Conexión CF601**: USB-Serial (COM) para lector de escritorio
-- **Conexión CF816**: TCP/IP para lector fijo multiantena
-- **Interfaz Web**: Dashboard moderno para control y monitoreo
-- **API REST**: Endpoints para integración con otros sistemas
-- **Docker**: Contenedor listo para despliegue
-- **Logs en Tiempo Real**: Monitoreo de actividad de los dispositivos
+- **CF601**: Conexión USB-OPEN via `UHFPrimeReader.dll` (x86)
+- **CF816**: Conexión TCP/IP via `UHFReader288.dll` (x86)
+- **Interfaz Web**: Dashboard HTML5 para control y monitoreo
+- **Microservicio Python**: Flask en puerto 5005
+- **Logs en Tiempo Real**: Monitoreo detallado de actividad
+- **Soporte EPC**: Lectura de tags con RSSI, Antena, Canal
 
 ## 📋 Requisitos
 
-- Docker y Docker Compose
-- Lectores Chafon CF601 y/o CF816
-- Navegador web moderno
+### Sistema Operativo
+- Windows 10/11 (x64) con Python 32-bit (x86) instalado
 
-## 🛠️ Instalación y Uso
+### Lectores Chafon
+- CF601: Lector USB de escritorio (modo USB-OPEN)
+- CF816: Lector Ethernet multi-antena
 
-### 1. Clonar el Repositorio
+### Navegador Web
+- Chrome, Edge, o Firefox (versión reciente)
 
-```bash
-git clone <repository-url>
-cd chafon-rfid-reader
+## 🛠️ Instalación
+
+### 1. Instalar Python 32-bit
+
+1. Descargar Python 3.13 **x86 (32-bit)** desde [python.org](https://www.python.org/downloads/)
+2. Durante la instalación, marcar **"Add Python to PATH"** y **"Install Python launcher"**
+3. Verificar la instalación:
+   ```cmd
+   py -0p
+   ```
+   Debe mostrar una entrada con `-3.13-32`
+
+### 2. Preparar el Proyecto
+
+1. Descomprimir o clonar el proyecto completo (incluida la carpeta `vendor_sdk/`)
+2. Navegar a la carpeta del proyecto:
+   ```cmd
+   cd UHF-SIE
+   ```
+3. **IMPORTANTE**: Copiar `hidapi.dll` al directorio raíz para CF601 USB-OPEN:
+   ```cmd
+   copy "vendor_sdk\UHF Desk Reader SDK\Software V1.1.2\hidapi.dll" .
+   ```
+
+### 3. Crear Entorno Virtual
+
+```cmd
+py -3.13-32 -m venv .venv32
 ```
 
-### 2. Construir y Ejecutar con Docker
+### 4. Activar Entorno Virtual
 
-```bash
-# Construir la imagen
-docker-compose build
-
-# Ejecutar el contenedor
-docker-compose up -d
+```cmd
+.venv32\Scripts\activate
 ```
 
-### 3. Acceder al Dashboard
+### 5. Instalar Dependencias
 
-Abre tu navegador y ve a: `http://localhost:3000`
+```cmd
+pip install -r requirements.txt
+```
 
-El dashboard te permitirá:
-- Conectar y desconectar los lectores CF601 y CF816
-- Configurar puertos COM y direcciones IP
-- Iniciar/detener la lectura de etiquetas
-- Ver logs en tiempo real
-- Monitorear el estado de los dispositivos
+### 6. Ejecutar el Servicio
 
-## 🔌 Configuración de Dispositivos
+**Opción A: Script Automático**
+```cmd
+start_python_32.bat
+```
 
-### CF601 (Lector USB)
+**Opción B: Manual**
+```cmd
+python app.py
+```
 
-1. Conecta el CF601 a tu computadora via USB
-2. Configura el dispositivo en modo USB-Serial (COM)
-3. En el dashboard, selecciona el puerto COM correcto
-4. Configura la velocidad de baudios (típicamente 9600)
-5. Haz clic en "Conectar CF601"
+El servicio estará disponible en: `http://127.0.0.1:5005`
 
-### CF816 (Lector Ethernet)
+Verificar salud:
+```cmd
+curl http://127.0.0.1:5005/health
+```
 
-1. Conecta el CF816 a tu red local via Ethernet
-2. Configura la IP del dispositivo (ej: 192.168.1.100)
-3. En el dashboard, ingresa la IP y puerto (típicamente 4001)
-4. Haz clic en "Conectar CF816"
+### 7. Abrir la Interfaz Web
+
+Abrir `index.html` en tu navegador (Chrome/Edge recomendado).
+
+## 🔌 Uso del Dashboard
+
+### CF601 (USB-OPEN)
+
+1. **Conectar**: Click en "Conectar USB-OPEN"
+2. **Health**: Verificar conexión con "Health"
+3. **Potencia**: "Obtener" o "Establecer" (0-30)
+4. **Lectura**: Al conectar, la lectura inicia automáticamente
+
+### CF816 (TCP/IP)
+
+1. **Configurar IP y Puerto**: 
+   - IP: `192.168.1.64` (ajustar según dispositivo)
+   - Puerto: `27011` (ajustar según configuración)
+2. **Conectar**: Click en "Conectar CF816"
+3. **Health**: Verificar conexión
+4. **Potencia**: Ajustar si es necesario
+5. **Lectura**: Click en "Iniciar Lectura CF816" / "Detener Lectura CF816"
+
+### Logs
+
+- **Consola**: Panel "Logs del Sistema" (lado derecho)
+- **Logs Detallados**: Panel inferior con información completa
+- **Exportar**: Botón "Exportar Logs" para guardar en archivo
 
 ## 📡 API Endpoints
 
-### Estado del Sistema
+### Health Check
 ```
-GET /api/status
-```
-
-### CF601
-```
-POST /api/hardware/connect/cf601
-{
-  "port": "COM3",
-  "baudRate": 9600
-}
-
-POST /api/hardware/disconnect/cf601
+GET /health
 ```
 
-### CF816
-```
-POST /api/hardware/connect/cf816
-{
-  "ip": "192.168.1.100",
-  "port": 4001
-}
+### CF601 - USB-OPEN
 
-POST /api/hardware/disconnect/cf816
+**Abrir Dispositivo**
+```
+POST /open
 ```
 
-### Control General
+**Iniciar Inventario**
 ```
-POST /api/hardware/start-all
-POST /api/hardware/stop-all
-POST /api/hardware/disconnect-all
+POST /inventory/start
 ```
 
-### Datos y Logs
+**Obtener Tag**
 ```
-GET /api/data
-GET /api/logs
-GET /api/ports
+GET /get-tag
+```
+
+**Detener Inventario**
+```
+POST /inventory/stop
+```
+
+**Obtener/Establecer Potencia**
+```
+GET /rf/power
+POST /rf/power
+Body: {"power": 20}  # 0-30
+```
+
+**Cerrar Dispositivo**
+```
+POST /close
+```
+
+### CF816 - TCP/IP
+
+**Abrir Conexión**
+```
+POST /cf816/net/open
+Body: {"ip": "192.168.1.64", "port": 27011, "timeoutMs": 200}
+```
+
+**Iniciar Inventario**
+```
+POST /cf816/inventory/start
+```
+
+**Obtener Tag**
+```
+GET /cf816/get-tag
+```
+
+**Detener Inventario**
+```
+POST /cf816/inventory/stop
+```
+
+**Obtener/Establecer Potencia**
+```
+GET /cf816/rf/power
+POST /cf816/rf/power
+Body: {"power": 20}  # 0-30
+```
+
+**Cerrar Conexión**
+```
+POST /cf816/close
 ```
 
 ## 📊 Datos Capturados
 
-### CF601
-- **EPC**: Electronic Product Code
-- **TID**: Tag Identifier (si disponible)
+### CF601 (USB-OPEN)
+- **EPC**: Electronic Product Code (hex)
+- **RSSI**: Fuerza de señal recibida (dbm)
+- **Antena**: Puerto de antena activa
+- **Canal**: Canal de frecuencia
 - **Timestamp**: Momento de lectura
-- **Raw Data**: Datos crudos recibidos
 
-### CF816
-- **EPC**: Electronic Product Code
-- **TID**: Tag Identifier (si disponible)
-- **RSSI**: Fuerza de señal recibida
-- **Antenna**: Puerto de antena (1-8)
-- **Timestamp**: Momento de lectura
-- **Raw Data**: Datos crudos recibidos
-
-## 🐳 Docker
-
-El sistema está configurado para funcionar en cualquier sistema operativo. Los puertos serie se configurarán automáticamente cuando conectes los dispositivos.
-
-## 🧪 Prueba Rápida
-
-### Probar el Sistema
-```bash
-# Construir y ejecutar
-docker-compose up -d
-
-# Ver logs
-docker-compose logs -f
-
-# Abrir navegador en: http://localhost:3000
-```
-
-## 🔧 Desarrollo
-
-### Instalar Dependencias
-```bash
-npm install
-```
-
-### Ejecutar en Modo Desarrollo
-```bash
-npm run dev
-```
-
-### Estructura del Proyecto
-```
-src/
-├── app.js              # Servidor principal
-├── readers/
-│   ├── CF601Reader.js  # Clase para CF601
-│   └── CF816Reader.js  # Clase para CF816
-public/
-└── index.html          # Dashboard web
-```
+### CF816 (TCP/IP)
+- **EPC**: Electronic Product Code (hex)
+- **CardNum**: Número de tag leído
 
 ## 🚨 Solución de Problemas
 
-### CF601 no se conecta
-- Verifica que el puerto COM esté disponible
-- Confirma que el dispositivo esté en modo USB-Serial
-- Revisa los logs del sistema
+### "WinError 193" al cargar DLL
 
-### CF816 no se conecta
-- Verifica la conectividad de red
-- Confirma la IP y puerto del dispositivo
-- Revisa la configuración de firewall
+**Causa**: Python 64-bit intentando cargar DLL 32-bit
 
-### Docker no puede acceder a puertos serie
-- En Linux, agrega tu usuario al grupo dialout
-- En Windows, usa el formato `//./COM1`
-- Verifica permisos del contenedor
+**Solución**:
+```cmd
+# Verificar arquitectura de Python
+python -c "import platform; print(platform.architecture())"
 
-## 📝 Logs
+# Debe mostrar: ('32bit', 'WindowsPE')
+# Si muestra 64bit, reinstalar Python 32-bit
+```
 
-Los logs están disponibles en:
-- Dashboard web (tiempo real)
-- API: `GET /api/logs`
-- Consola del contenedor Docker
+### "No se encontró UHFPrimeReader.dll"
+
+**Causa**: DLL no está en las rutas esperadas
+
+**Solución**:
+1. Copiar `hidapi.dll` y `UHFPrimeReader.dll` a la carpeta del proyecto (junto a `app.py`)
+2. O verificar que la carpeta `vendor_sdk/` esté completa
+
+### "OpenDevice rc=-255" (CF601 USB-OPEN)
+
+**Posibles Causas**:
+1. Dispositivo no detectado en modo USB-OPEN
+2. Falta de controlador de dispositivo
+3. Conflicto con puerto COM
+
+**Soluciones**:
+1. **Verificar modo del dispositivo**: El CF601 debe estar en modo "USB-OPEN", no "COM"
+2. **Instalar controlador USB**: Asegurar que Windows reconoce el CF601 como dispositivo HID
+3. **Verificar hidapi.dll**: Copiar manualmente a la carpeta donde está `UHFPrimeReader.dll`
+   ```
+   vendor_sdk/UHF Desk Reader SDK/Software V1.1.2/hidapi.dll
+   ```
+4. **Comprobar logs**: Revisar `logs/python_service_32.err.log` para más detalles
+5. **Si persiste**: Probar alternativamente con modo COM (requiere modificar `/open` en `app.py`)
+
+### "Health" no responde
+
+**Causa**: Servicio no está ejecutándose
+
+**Solución**:
+```cmd
+# Verificar puerto 5005
+netstat -ano | find "5005"
+
+# Si no hay proceso, reiniciar:
+python app.py
+
+# Si el puerto está ocupado, cerrar proceso anterior:
+taskkill /PID <numero_pid> /F
+```
+
+### CF816 no conecta
+
+**Causa**: Configuración de red incorrecta
+
+**Solución**:
+1. Verificar IP del CF816 (usar herramienta de fabricante)
+2. Verificar que el puerto sea correcto (por defecto 6000 o 27011)
+3. Ping desde Windows: `ping 192.168.1.64`
+4. Verificar firewall (desactivar temporalmente si es necesario)
+
+### "Failed to fetch" en HTML
+
+**Causa**: CORS o servicio no disponible
+
+**Solución**:
+1. Verificar que el servicio Python esté ejecutándose
+2. Abrir DevTools (F12) y revisar errores de red
+3. Verificar `http://127.0.0.1:5005/health` manualmente
+
+## 🔧 Desarrollo
+
+### Estructura del Proyecto
+
+```
+UHF-SIE/
+├── app.py                      # Microservicio Flask
+├── requirements.txt            # Dependencias Python
+├── index.html                  # Dashboard HTML5
+├── start_python_32.bat        # Script inicio automático
+├── stop_python.bat            # Script detener servicio
+├── vendor_sdk/                 # SDKs de fabricante
+│   ├── UHF Desk Reader SDK/
+│   │   └── API/
+│   │       ├── UHFPrimeReader.dll  # CF601
+│   │       └── hidapi.dll           # USB-OPEN
+│   └── CF815.CF816.CF817 SDK/
+│       └── SDK/VC/x32/
+│           └── UHFReader288.dll     # CF816
+└── Legacy/                     # Código Node.js obsoleto
+```
+
+### Dependencias Python
+
+- `Flask`: Servidor web
+- `flask-cors`: Soporte CORS para HTML local
+
+### Logs
+
+Los logs se guardan en:
+- **Salida estándar**: Console cuando `python app.py`
+- **Archivos**: `logs/python_service_32.out.log` y `.err.log`
+
+Para ver logs en tiempo real:
+```cmd
+type logs\python_service_32.out.log
+```
 
 ## 🔒 Seguridad
 
-- El contenedor se ejecuta con usuario no-root
-- Headers de seguridad habilitados
-- CORS configurado para desarrollo
+- El servicio escucha solo en `127.0.0.1` (local)
+- CORS configurado para permitir `file://` (HTML local)
+- Firewall puede bloquear puerto 5005 (agregar excepción si es necesario)
 
 ## 📞 Soporte
 
-Para problemas específicos de los lectores Chafon, consulta la documentación oficial del fabricante.
+Para problemas específicos de los lectores Chafon, consulta:
+- **CF601**: Documentación "UHF Prime Reader.DLL动态库使用手册 V1.3"
+- **CF816**: Documentación "UHFReader288.DLL manual V3.0"
 
 ## 📄 Licencia
 
 MIT License
+
+## 🎯 Changelog
+
+### v2.0 (Actual)
+- Migración a Python 32-bit (Python 3.13 x86)
+- Microservicio Flask en puerto 5005
+- Soporte CF601 USB-OPEN (UHFPrimeReader.dll)
+- Soporte CF816 TCP/IP (UHFReader288.dll)
+- Dashboard HTML5 modernizado
+- Logs detallados con exportación
+- Gestión automática de hidapi.dll
+- Detección flexible de DLLs en SDK
+- Estructuras de datos completas (RSSI, Antena, Canal)
+- Health check y diagnóstico de errores
+
+**Nota**: CF601 USB-OPEN requiere dispositivo físico para pruebas. Error -255 indica configuración específica del hardware.
+
+### v1.0 (Legacy)
+- Node.js + Express
+- Docker Compose
+- Soporte Serial/TCP básico

@@ -20,14 +20,50 @@ DLL_CANDIDATES = [
     os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Sample', 'python', 'UHFPrimeReader.dll'),
 ]
 
+# Candidatos para hidapi.dll (necesario para USB-OPEN)
+HIDAPI_CANDIDATES = [
+    os.path.join(ROOT, 'hidapi.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Software V1.1.2', 'hidapi.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'API', 'hidapi.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'UHF Desk Reader SDK', 'Sample', 'Delphi', 'hidapi.dll'),
+]
+
 def resolve_dll():
     print("[DEBUG] Buscando UHFPrimeReader.dll en:")
     for p in DLL_CANDIDATES:
-        print(f"  - {p} {'✓' if os.path.exists(p) else '✗'}")
-        if os.path.exists(p):
+        exists = os.path.exists(p)
+        print(f"  - {p} {'[OK]' if exists else '[NO]'}")
+        if exists:
             print(f"[DEBUG] DLL encontrada en: {p}")
             return p
     return None
+
+def setup_hidapi():
+    """Configura hidapi.dll para que esté disponible para UHFPrimeReader.dll"""
+    import shutil
+    # Buscar hidapi.dll
+    for p in HIDAPI_CANDIDATES:
+        if os.path.exists(p):
+            print(f"[DEBUG] hidapi.dll encontrada en: {p}")
+            # Copiar al directorio de UHFPrimeReader.dll si no está ahí
+            dll_dir = os.path.dirname(DLL_PATH)
+            local_hidapi = os.path.join(dll_dir, 'hidapi.dll')
+            if not os.path.exists(local_hidapi):
+                try:
+                    shutil.copy2(p, local_hidapi)
+                    print(f"[DEBUG] Copiado hidapi.dll a: {local_hidapi}")
+                except Exception as e:
+                    print(f"[WARN] No se pudo copiar hidapi.dll: {e}")
+            # Agregar al PATH de Windows si es necesario
+            if platform.system() == 'Windows':
+                try:
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    kernel32.AddDllDirectoryW(dll_dir.encode('utf-8'))
+                except Exception as e:
+                    print(f"[WARN] No se pudo agregar {dll_dir} al PATH: {e}")
+            return
+    print("[WARN] hidapi.dll no encontrada - CF601 USB-OPEN puede fallar")
 
 DLL_PATH = resolve_dll()
 if not DLL_PATH:
@@ -36,6 +72,9 @@ if not DLL_PATH:
     print("1. Copia UHFPrimeReader.dll al directorio del proyecto")
     print("2. O asegúrate de tener la carpeta vendor_sdk/ completa")
     raise RuntimeError('No se encontró UHFPrimeReader.dll en el SDK')
+
+# Configurar hidapi.dll ANTES de cargar UHFPrimeReader.dll
+setup_hidapi()
 
 lib = cdll.LoadLibrary(DLL_PATH)
 lib.OpenDevice.restype = c_int32
@@ -103,10 +142,17 @@ def open_device():
     with _lock:
         if _is_open:
             return jsonify(success=True, message='Ya abierto', **sys_meta(step='open'))
-        # Para USB-OPEN el SDK soporta OpenDevice con parámetros reservados
-        rc = lib.OpenDevice(byref(hComm), 0, 0)
-        if rc != 0:
-            return jsonify(success=False, message=f'OpenDevice rc={rc}', **sys_meta(step='open', rc=rc)), 500
+        # Para USB-OPEN, probar diferentes parámetros según el error -255
+        # Datos del cliente: requiere USB-OPEN, no funciona COM
+        # Intentar valores especiales para modo USB-OPEN
+        try:
+            # Parámetro especial para USB-OPEN según documentación
+            rc = lib.OpenDevice(byref(hComm), c_char_p(b"0xFF"), 0x00)
+            if rc != 0:
+                # Probablemente necesite otros parámetros o configuración previa
+                return jsonify(success=False, message=f'OpenDevice (USB-OPEN) rc={rc}', **sys_meta(step='open', rc=rc)), 500
+        except Exception as e:
+            return jsonify(success=False, message=f'OpenDevice exception: {str(e)}', **sys_meta(step='open', rc=-1)), 500
         _is_open = True
         return jsonify(success=True, message='Abierto', **sys_meta(step='open', rc=rc))
 
@@ -219,6 +265,9 @@ def load_cf816_dll():
         cf816.OpenNetPort.argtypes = [c_int, c_char_p, POINTER(c_ubyte), POINTER(c_int)]
         cf816.CloseNetPort.restype = c_int
         cf816.CloseNetPort.argtypes = [c_int]
+        # InitRFIDCallBack(pRFIDCallBack pUIDback,BOOL isBackUID,int FrmHandle)
+        cf816.InitRFIDCallBack.restype = None
+        cf816.InitRFIDCallBack.argtypes = [c_void_p, c_bool, c_int]
         # SingleTagInventory_G2(BYTE *address, BYTE* EPC, int *EPCLength, int *CardNum, int FrmHandle)
         cf816.SingleTagInventory_G2.restype = c_int
         cf816.SingleTagInventory_G2.argtypes = [POINTER(c_ubyte), POINTER(c_ubyte), POINTER(c_int), POINTER(c_int), c_int]
@@ -247,6 +296,9 @@ def cf816_net_open():
     rc = cf816.OpenNetPort(port, c_char_p(ip), byref(cf816ComAdr), byref(hNet))
     if rc != 0:
         return jsonify(success=False, message=f'OpenNetPort rc={rc}', cf816_dll=CF816_DLL_PATH, frmHandle=hNet.value, comAdr=int(cf816ComAdr.value)), 500
+    # Inicializar callback según ejemplos
+    if hNet.value > 0:
+        cf816.InitRFIDCallBack(None, False, hNet.value)
     return jsonify(success=True, message='CF816 abierto', frmHandle=hNet.value, comAdr=int(cf816ComAdr.value), cf816_dll=CF816_DLL_PATH)
 
 @app.post('/cf816/inventory/start')

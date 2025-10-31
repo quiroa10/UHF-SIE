@@ -4,6 +4,11 @@ from ctypes import *
 import os
 import threading
 import platform
+try:
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except ImportError:
+    SERIAL_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -138,25 +143,35 @@ def sys_meta(step=None, rc=None):
         'rc': rc
     }
 
+@app.get('/ports')
+def get_ports():
+    """Lista puertos COM disponibles"""
+    if not SERIAL_AVAILABLE:
+        return jsonify(success=True, ports=[], message='pyserial no disponible')
+    ports = [p.device for p in serial.tools.list_ports.comports()]
+    return jsonify(success=True, ports=ports)
+
 @app.post('/open')
 def open_device():
     global _is_open
     with _lock:
         if _is_open:
             return jsonify(success=True, message='Ya abierto', **sys_meta(step='open'))
-        # Para USB-OPEN, probar diferentes parámetros según el error -255
-        # Datos del cliente: requiere USB-OPEN, no funciona COM
-        # Intentar valores especiales para modo USB-OPEN
+        # Permitir parámetros opcionales para COM o USB-OPEN
+        data = request.get_json(silent=True) or {}
+        com_port = data.get('comPort', 'COM1')  # Default COM1 para prueba
+        baudrate = int(data.get('baudrate', 4))  # 4 = 115200 según ejemplos
+        
         try:
-            # Parámetro especial para USB-OPEN según documentación
-            rc = lib.OpenDevice(byref(hComm), c_char_p(b"0xFF"), 0x00)
+            strComPort = c_char_p(com_port.encode('utf-8'))
+            Baudrate = c_ubyte(baudrate)
+            rc = lib.OpenDevice(byref(hComm), strComPort, Baudrate)
             if rc != 0:
-                # Probablemente necesite otros parámetros o configuración previa
-                return jsonify(success=False, message=f'OpenDevice (USB-OPEN) rc={rc}', **sys_meta(step='open', rc=rc)), 500
+                return jsonify(success=False, message=f'OpenDevice rc={rc} (puerto={com_port}, baud={baudrate})', **sys_meta(step='open', rc=rc)), 500
         except Exception as e:
             return jsonify(success=False, message=f'OpenDevice exception: {str(e)}', **sys_meta(step='open', rc=-1)), 500
         _is_open = True
-        return jsonify(success=True, message='Abierto', **sys_meta(step='open', rc=rc))
+        return jsonify(success=True, message=f'Abierto {com_port}', **sys_meta(step='open', rc=rc))
 
 @app.post('/inventory/start')
 def inventory_start():
@@ -238,6 +253,9 @@ CF816_DLL_CANDIDATES = [
     # Luego buscar en rutas del SDK
     os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'VC', 'x32', 'UHFReader288.dll'),
     os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'C#', 'x86', 'UHFReader288.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'SDK', 'Java-jni', 'x32', 'UHFReader288.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'Demo', 'c#', 'EXE', 'UHFReader288.dll'),
+    os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'Demo', 'JAVA', 'testdemo-jni', 'UHFReader288.dll'),
 ]
 
 def resolve_cf816_dll():
@@ -287,26 +305,31 @@ def load_cf816_dll():
         cf816.StopImmediately.restype = c_int
         cf816.StopImmediately.argtypes = [POINTER(c_ubyte), c_int]
         return True
-    except OSError:
+    except Exception as e:
+        print(f"[ERROR CF816] Fallo al cargar DLL: {e}")
         cf816 = None
         return False
 
 @app.post('/cf816/net/open')
 def cf816_net_open():
-    if not load_cf816_dll():
-        return jsonify(success=False, message='No se pudo cargar UHFReader288.dll', cf816_dll=CF816_DLL_PATH), 500
-    data = request.get_json(silent=True) or {}
-    ip = str(data.get('ip', '192.168.1.200')).encode('utf-8')
-    port = int(data.get('port', 6000))
-    timeout_ms = int(data.get('timeoutMs', 200))  # no usado por OpenNetPort clásico
-    # OpenNetPort devuelve FrmHandle y puede actualizar ComAdr
-    rc = cf816.OpenNetPort(port, c_char_p(ip), byref(cf816ComAdr), byref(hNet))
-    if rc != 0:
-        return jsonify(success=False, message=f'OpenNetPort rc={rc}', cf816_dll=CF816_DLL_PATH, frmHandle=hNet.value, comAdr=int(cf816ComAdr.value)), 500
-    # Inicializar callback según ejemplos
-    if hNet.value > 0:
-        cf816.InitRFIDCallBack(None, False, hNet.value)
-    return jsonify(success=True, message='CF816 abierto', frmHandle=hNet.value, comAdr=int(cf816ComAdr.value), cf816_dll=CF816_DLL_PATH)
+    try:
+        if not load_cf816_dll():
+            return jsonify(success=False, message='No se pudo cargar UHFReader288.dll', cf816_dll=CF816_DLL_PATH), 500
+        data = request.get_json(silent=True) or {}
+        ip = str(data.get('ip', '192.168.1.200')).encode('utf-8')
+        port = int(data.get('port', 6000))
+        timeout_ms = int(data.get('timeoutMs', 200))  # no usado por OpenNetPort clásico
+        # OpenNetPort devuelve FrmHandle y puede actualizar ComAdr
+        rc = cf816.OpenNetPort(port, c_char_p(ip), byref(cf816ComAdr), byref(hNet))
+        if rc != 0:
+            return jsonify(success=False, message=f'OpenNetPort rc={rc}', cf816_dll=CF816_DLL_PATH, frmHandle=hNet.value, comAdr=int(cf816ComAdr.value)), 500
+        # Inicializar callback según ejemplos
+        if hNet.value > 0:
+            cf816.InitRFIDCallBack(None, False, hNet.value)
+        return jsonify(success=True, message='CF816 abierto', frmHandle=hNet.value, comAdr=int(cf816ComAdr.value), cf816_dll=CF816_DLL_PATH)
+    except Exception as e:
+        print(f"[ERROR CF816] Excepción en /cf816/net/open: {e}")
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
 @app.post('/cf816/inventory/start')
 def cf816_inventory_start():

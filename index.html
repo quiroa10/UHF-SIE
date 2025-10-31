@@ -443,12 +443,13 @@
                 <div class="form-row">
                     <label class="form-label">Modo:</label>
                     <select id="cf601-mode" class="form-select" onchange="toggleCF601Mode()">
-                        <option value="hid" selected>USB-OPEN</option>
+                        <option value="hid">USB-OPEN</option>
+                        <option value="serial" selected>COM (Serial)</option>
                     </select>
                 </div>
                 
                 <!-- Modo Serial -->
-                <div id="cf601-serial-config" style="display: none;">
+                <div id="cf601-serial-config">
                     <div class="form-row">
                         <label class="form-label">Puerto:</label>
                         <select id="cf601-port" class="form-select">
@@ -467,7 +468,7 @@
                 </div>
                 
                 <!-- Modo HID -->
-                <div id="cf601-hid-config">
+                <div id="cf601-hid-config" style="display: none;">
                     <div class="form-row">
                         <span class="form-label">USB-OPEN:</span>
                         <span style="font-size:0.85rem;color:#4a5568;">Requiere microservicio en 127.0.0.1:5005</span>
@@ -851,49 +852,35 @@
 
         async function connectCF601Serial() {
             const port = document.getElementById('cf601-port').value;
-            const baudRate = parseInt(document.getElementById('cf601-baud').value);
+            const baud = document.getElementById('cf601-baud').value;
+            // Mapear baudrate a código según ejemplos Python: 0=9600, 1=19200, 2=38400, 3=57600, 4=115200
+            const baudMap = { '9600': 0, '19200': 1, '38400': 2, '57600': 3, '115200': 4 };
+            const baudCode = baudMap[baud] !== undefined ? baudMap[baud] : 4;
             
-            addLog(`Conectando CF601 en ${port} (${baudRate} baud)...`, 'info');
-            addDetailedLog('Iniciando conexión CF601', 'info', { port, baudRate });
+            addLog(`Conectando CF601 en ${port} (${baud} baud)...`, 'info');
+            addDetailedLog('POST /open (Python COM)', 'http', { url: `${PY_BASE}/open`, body: { comPort: port, baudrate: baudCode } });
             
             try {
-                addDetailedLog('Enviando petición HTTP a API', 'http', {
-                    url: `${API_BASE}/hardware/connect/cf601`,
-                    method: 'POST',
-                    body: { port, baudRate }
-                });
-                
-                const response = await fetch(`${API_BASE}/hardware/connect/cf601`, {
+                const response = await fetch(`${PY_BASE}/open`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ port, baudRate })
+                    body: JSON.stringify({ comPort: port, baudrate: baudCode })
                 });
+                const result = await response.json().catch(() => ({}));
+                addDetailedLog('Respuesta /open (Python COM)', 'http', { status: response.status, statusText: response.statusText, result });
                 
-                addDetailedLog('Respuesta HTTP recibida', 'http', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries())
-                });
-                
-                const result = await response.json();
-                addDetailedLog('Datos de respuesta parseados', 'debug', result);
-                
-                if (result.success) {
+                if (response.ok && result.success) {
                     addLog(`${result.message}`, 'success');
-                    addDetailedLog('Conexión CF601 exitosa', 'success', result);
+                    addDetailedLog('Conexión CF601 COM exitosa', 'success', result);
                     updateDeviceStatus('cf601', true);
                     updateSystemStatus(true);
                 } else {
-                    addLog(`Error: ${result.message}`, 'error');
-                    addDetailedLog('Error en conexión CF601', 'error', result);
+                    addLog(`Error: ${result.message || response.statusText}`, 'error');
+                    addDetailedLog('Error en conexión CF601 COM', 'error', { status: response.status, result });
                 }
             } catch (error) {
-                addLog(`Error conectando CF601: ${error.message}`, 'error');
-                addDetailedLog('Excepción en conexión CF601', 'error', {
-                    message: error.message,
-                    stack: error.stack,
-                    name: error.name
-                });
+                addLog(`Error conectando CF601 COM: ${error.message}`, 'error');
+                addDetailedLog('Excepción en conexión CF601 COM', 'error', { message: error.message });
             }
         }
 
@@ -1109,12 +1096,12 @@
             addDetailedLog('Iniciando detección de puertos COM', 'info');
             
             try {
-                addDetailedLog('Solicitando lista de puertos a API', 'http', {
-                    url: `${API_BASE}/ports`,
+                addDetailedLog('Solicitando lista de puertos (Python)', 'http', {
+                    url: `${PY_BASE}/ports`,
                     method: 'GET'
                 });
                 
-                const response = await fetch(`${API_BASE}/ports`);
+                const response = await fetch(`${PY_BASE}/ports`);
                 addDetailedLog('Respuesta de puertos recibida', 'http', {
                     status: response.status,
                     statusText: response.statusText

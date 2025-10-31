@@ -99,12 +99,21 @@ Abrir `index.html` en tu navegador (Chrome/Edge recomendado).
 
 ## 🔌 Uso del Dashboard
 
-### CF601 (USB-OPEN)
+### CF601
 
-1. **Conectar**: Click en "Conectar USB-OPEN"
-2. **Health**: Verificar conexión con "Health"
-3. **Potencia**: "Obtener" o "Establecer" (0-30)
-4. **Lectura**: Al conectar, la lectura inicia automáticamente
+**Modo COM (Serial - Recomendado):**
+
+1. **Seleccionar modo**: "COM (Serial)" en el selector
+2. **Seleccionar puerto**: El sistema detecta automáticamente los puertos disponibles
+3. **Velocidad**: 115200 baud (recomendado)
+4. **Conectar**: Click en "Conectar Serial"
+5. **Lectura**: Click en "Iniciar Lectura" / "Detener Lectura"
+
+**Modo USB-OPEN (Limitaciones conocidas):**
+
+1. **Seleccionar modo**: "USB-OPEN" en el selector
+2. **Conectar**: Click en "Conectar USB-OPEN"
+3. **Nota**: Puede tener problemas en Windows con Python (ver "Error -255" en Solución de Problemas)
 
 ### CF816 (TCP/IP)
 
@@ -291,7 +300,9 @@ python -c "import platform; print(platform.architecture())"
    - Cambiar modo a COM y ajustar parámetros en `app.py`
    - Ver documentación del SDK para ejemplo COM
 
-**Nota**: `-255` puede indicar limitación del SDK en Windows. El SDK Linux/ARM incluye `OpenHidConnection`, la DLL Windows no expone esta función y requiere parámetros adicionales de configuración.
+**Nota Crítica**: `-255` parece ser una limitación del SDK en Windows para Python/ctypes. Los ejemplos oficiales del SDK (C#, Delphi, Java) usan `UHF_Reader_API.dll` (wrapper .NET) o implementaciones nativas que no están disponibles en Python. El SDK Linux/ARM expone `OpenHidConnection` directamente, pero la DLL Windows x86 no.
+
+**Solución Temporal**: Si USB-OPEN no funciona con Python, usar el software oficial del fabricante (`UHF_Desk.exe`) para verificar que el dispositivo funciona correctamente.
 
 ### "Health" no responde
 

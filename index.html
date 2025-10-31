@@ -465,6 +465,10 @@
                         </select>
                     </div>
                     <button class="btn btn-primary" onclick="connectCF601Serial()">Conectar Serial</button>
+                    <div class="form-row" style="margin-top:0.5rem;">
+                        <button class="btn btn-success" onclick="startReadingCF601()">Iniciar Lectura CF601</button>
+                        <button class="btn btn-warning" onclick="stopReadingCF601()">Detener Lectura CF601</button>
+                    </div>
                 </div>
                 
                 <!-- Modo HID -->
@@ -722,6 +726,47 @@
                 }
             } catch (e) {
                 addLog(`Excepción set potencia CF816: ${e.message}`, 'error');
+            }
+        }
+
+        async function startReadingCF601() {
+            addDetailedLog('POST /inventory/start (CF601)', 'http', { url: `${PY_BASE}/inventory/start` });
+            try {
+                const r = await fetch(`${PY_BASE}/inventory/start`, { method: 'POST' });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /inventory/start', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (!r.ok || !j.success) {
+                    addLog(`Error iniciar CF601: ${(j && j.message) || r.statusText}`, 'error');
+                    return;
+                }
+                addLog(j.message || 'CF601 inventario listo (polling)', 'success');
+                if (!window.__cf601Poll) {
+                    window.__cf601Poll = setInterval(async () => {
+                        try {
+                            const r2 = await fetch(`${PY_BASE}/get-tag`);
+                            const j2 = await r2.json().catch(() => ({}));
+                            if (j2 && j2.success && j2.tag && j2.tag.epc) {
+                                addDetailedLog('CF601 TAG recibido', 'success', j2);
+                                addLog(`CF601 EPC=${j2.tag.epc} RSSI=${j2.tag.rssi || 'N/A'} ANT=${j2.tag.antenna || 'N/A'}`, 'info');
+                            }
+                        } catch {}
+                    }, 200);
+                }
+            } catch (e) {
+                addLog(`Excepción iniciar CF601: ${e.message}`, 'error');
+            }
+        }
+
+        async function stopReadingCF601() {
+            addDetailedLog('POST /inventory/stop (CF601)', 'http', { url: `${PY_BASE}/inventory/stop` });
+            try {
+                const r = await fetch(`${PY_BASE}/inventory/stop`, { method: 'POST' });
+                const j = await r.json().catch(() => ({}));
+                addDetailedLog('Respuesta /inventory/stop', 'http', { status: r.status, statusText: r.statusText, result: j });
+                if (window.__cf601Poll) { clearInterval(window.__cf601Poll); window.__cf601Poll = null; }
+                addLog('CF601 inventario detenido', 'success');
+            } catch (e) {
+                addLog(`Excepción detener CF601: ${e.message}`, 'error');
             }
         }
 

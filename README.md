@@ -81,6 +81,7 @@ start_python_32.bat
 **Opción B: Manual**
 ```cmd
 .venv32\Scripts\activate
+pip install -r requirements.txt
 python app.py
 ```
 
@@ -154,6 +155,29 @@ Abrir `index.html` en tu navegador (Chrome/Edge recomendado).
    ```
 
 2. **Iniciar**: Ejecutar `start_python_32.bat` nuevamente
+
+### Verificar Instalación
+
+**Comprobar que todo está correcto:**
+
+1. **Verificar que pyserial está instalado**:
+   ```cmd
+   .venv32\Scripts\activate
+   pip list | findstr pyserial
+   ```
+   Debe mostrar: `pyserial     3.5`
+
+2. **Verificar logs del servicio**:
+   ```cmd
+   type logs\python_service_32.out.log
+   ```
+   Debe mostrar: `[DEBUG] pyserial disponible: True`
+
+3. **Verificar que el servidor responde**:
+   ```cmd
+   curl http://127.0.0.1:5005/ports
+   ```
+   Debe responder: `{"ports":["COM4"],"success":true}` (o los puertos que tengas)
 
 ## 📡 API Endpoints
 

@@ -13,6 +13,9 @@ except ImportError:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Log del estado de pyserial
+print(f"[DEBUG] pyserial disponible: {SERIAL_AVAILABLE}")
+
 # Resolver ruta de la DLL desde el SDK incluido en el repo
 ROOT = os.path.abspath(os.path.dirname(__file__))
 # Crear carpeta de logs si no existe
@@ -147,9 +150,12 @@ def sys_meta(step=None, rc=None):
 def get_ports():
     """Lista puertos COM disponibles"""
     if not SERIAL_AVAILABLE:
-        return jsonify(success=True, ports=[], message='pyserial no disponible')
-    ports = [p.device for p in serial.tools.list_ports.comports()]
-    return jsonify(success=True, ports=ports)
+        return jsonify(success=False, ports=[], message='pyserial no disponible. Ejecuta: pip install pyserial')
+    try:
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        return jsonify(success=True, ports=ports)
+    except Exception as e:
+        return jsonify(success=False, ports=[], message=f'Error listando puertos: {str(e)}')
 
 @app.post('/open')
 def open_device():

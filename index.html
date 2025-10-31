@@ -1110,10 +1110,10 @@
                 const result = await response.json();
                 addDetailedLog('Datos de puertos parseados', 'debug', result);
                 
-                if (result.success) {
-                    const portSelect = document.getElementById('cf601-port');
-                    portSelect.innerHTML = '';
-                    
+                const portSelect = document.getElementById('cf601-port');
+                portSelect.innerHTML = '';
+                
+                if (result.success && result.ports && result.ports.length > 0) {
                     addDetailedLog('Procesando puertos detectados', 'info', {
                         ports: result.ports,
                         count: result.ports.length
@@ -1133,6 +1133,13 @@
                         availablePorts: result.ports
                     });
                 } else {
+                    const errorMsg = result.message || 'No se pudieron detectar puertos';
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = errorMsg;
+                    option.disabled = true;
+                    portSelect.appendChild(option);
+                    addLog(`Error: ${errorMsg}`, 'error');
                     addDetailedLog('Error en respuesta de puertos', 'error', result);
                 }
             } catch (error) {
@@ -1161,6 +1168,9 @@
             // Sin backend Legacy: no verificar estado /api
             addLog('RFID Control Center iniciado', 'success');
             addDetailedLog('Aplicación iniciada correctamente', 'success');
+            
+            // Cargar puertos disponibles
+            loadPorts();
             
             // Polling automático deshabilitado. Usa el botón "Refrescar logs".
         };

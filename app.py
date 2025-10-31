@@ -294,12 +294,18 @@ def setup_dmdll():
             if CF816_DLL_PATH:
                 dll_dir = os.path.dirname(CF816_DLL_PATH)
                 local_dmdll = os.path.join(dll_dir, 'dmdll.dll')
+                print(f"[DEBUG CF816] Intentando copiar a: {local_dmdll}")
                 if not os.path.exists(local_dmdll):
                     try:
                         shutil.copy2(p, local_dmdll)
                         print(f"[DEBUG CF816] Copiado dmdll.dll a: {local_dmdll}")
                     except Exception as e:
                         print(f"[WARN CF816] No se pudo copiar dmdll.dll: {e}")
+                else:
+                    print(f"[DEBUG CF816] dmdll.dll ya existe en: {local_dmdll}")
+                return
+            else:
+                print("[WARN CF816] CF816_DLL_PATH es None, no se puede copiar dmdll.dll")
                 return
     print("[WARN CF816] dmdll.dll no encontrada - CF816 puede fallar")
 

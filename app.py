@@ -275,14 +275,44 @@ def resolve_cf816_dll():
     print("[DEBUG CF816] DLL no encontrada en ninguna ruta")
     return None
 
+def setup_dmdll():
+    """Configura dmdll.dll para que esté disponible para UHFReader288.dll"""
+    import shutil
+    # Buscar dmdll.dll en Demo/c#/EXE
+    dmdll_candidates = [
+        os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'Demo', 'c#', 'EXE', 'dmdll.dll'),
+        os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'TCPIP SET', 'CP208_V1.02', 'win10', '32bit', 'dmdll.dll'),
+        os.path.join(ROOT, 'vendor_sdk', 'CF815.CF816.CF817 SDK', 'TCPIP SET', 'CP208_V1.02', 'win7_XP', '32bit', 'dmdll.dll'),
+    ]
+    for p in dmdll_candidates:
+        if os.path.exists(p):
+            print(f"[DEBUG CF816] dmdll.dll encontrada en: {p}")
+            # Copiar al directorio de UHFReader288.dll si no está ahí
+            if CF816_DLL_PATH:
+                dll_dir = os.path.dirname(CF816_DLL_PATH)
+                local_dmdll = os.path.join(dll_dir, 'dmdll.dll')
+                if not os.path.exists(local_dmdll):
+                    try:
+                        shutil.copy2(p, local_dmdll)
+                        print(f"[DEBUG CF816] Copiado dmdll.dll a: {local_dmdll}")
+                    except Exception as e:
+                        print(f"[WARN CF816] No se pudo copiar dmdll.dll: {e}")
+                return
+    print("[WARN CF816] dmdll.dll no encontrada - CF816 puede fallar")
+
 CF816_DLL_PATH = resolve_cf816_dll()
+# Configurar dmdll.dll ANTES de cargar UHFReader288.dll
+if CF816_DLL_PATH:
+    setup_dmdll()
 cf816 = None
 hNet = c_int(0)
 cf816ComAdr = c_ubyte(0xFF)
 
 def load_cf816_dll():
     global cf816
+    print(f"[DEBUG CF816] load_cf816_dll() llamado, cf816 actual: {cf816}")
     if cf816:
+        print(f"[DEBUG CF816] cf816 ya cargado, retornando True")
         return True
     if not CF816_DLL_PATH or not os.path.exists(CF816_DLL_PATH):
         print(f"[DEBUG CF816] DLL no encontrada en: {CF816_DLL_PATH}")
@@ -318,8 +348,11 @@ def load_cf816_dll():
 
 @app.post('/cf816/net/open')
 def cf816_net_open():
+    print(f"[DEBUG CF816 /cf816/net/open] Endpoint llamado")
     try:
+        print(f"[DEBUG CF816 /cf816/net/open] Llamando load_cf816_dll()")
         if not load_cf816_dll():
+            print(f"[DEBUG CF816 /cf816/net/open] load_cf816_dll() retornó False")
             return jsonify(success=False, message='No se pudo cargar UHFReader288.dll', cf816_dll=CF816_DLL_PATH), 500
         data = request.get_json(silent=True) or {}
         ip = str(data.get('ip', '192.168.1.200')).encode('utf-8')
